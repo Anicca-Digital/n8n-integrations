@@ -52,7 +52,7 @@
         0
       ],
       "notesInFlow": true,
-      "notes": "EDIT HERE: namePrefix = what a Site / Company customer / Quote / Job name must start with (case-sensitive). contactEmailDomains = comma-separated email domains that make a Contact a test record. Simpro API base URL."
+      "notes": "EDIT HERE: namePrefix = what a Site / Company customer / Quote / Job name must start with (not case-sensitive). contactEmailDomains = comma-separated email domains that make a Contact a test record. Simpro API base URL."
     },
     {
       "parameters": {
@@ -147,7 +147,7 @@
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={{ (() => {\n  const rec = $('Get Simpro Record').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const event = $('When Executed by Another Workflow').first().json;\n  // Site / Quote / Job use Name, company customers use CompanyName, contacts use GivenName + FamilyName.\n  const recordName = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();\n  if (event.body?.name === 'Contact') {\n    // Contacts: test record = email domain is one of contactEmailDomains (exact match, not case-sensitive).\n    const email = String(rec.Email ?? '').trim().toLowerCase();\n    const domain = email.includes('@') ? email.split('@').pop() : '';\n    const domains = String(cfg.contactEmailDomains).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\n    return { ...event, recordName, email, isTestRecord: domains.includes(domain) };\n  }\n  return { ...event, recordName, isTestRecord: recordName.startsWith(cfg.namePrefix) };\n})() }}",
+        "jsonOutput": "={{ (() => {\n  const rec = $('Get Simpro Record').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const event = $('When Executed by Another Workflow').first().json;\n  // Name check is not case-sensitive (HS Test - / HS TEST - both pass).\n  // Site / Quote / Job use Name, company customers use CompanyName, contacts use GivenName + FamilyName.\n  const recordName = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();\n  if (event.body?.name === 'Contact') {\n    // Contacts: test record = email domain is one of contactEmailDomains (exact match, not case-sensitive).\n    const email = String(rec.Email ?? '').trim().toLowerCase();\n    const domain = email.includes('@') ? email.split('@').pop() : '';\n    const domains = String(cfg.contactEmailDomains).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\n    return { ...event, recordName, email, isTestRecord: domains.includes(domain) };\n  }\n  return { ...event, recordName, isTestRecord: recordName.toLowerCase().startsWith(String(cfg.namePrefix).toLowerCase()) };\n})() }}",
         "options": {}
       },
       "id": "db9c9d47-c018-4e6c-a0b3-bb7f68a33905",
