@@ -1,0 +1,782 @@
+{
+  "name": "[SPL] Upsert Job in HubSpot",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"simpro_job_id\": \"a string\",\n  \"simpro_company_id\": \"a string\"\n}"
+      },
+      "id": "672a8b2e-445e-4070-a605-54f9feb6f7c4",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -1696,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $json.simpro_job_id }}"
+            }
+          ]
+        }
+      },
+      "id": "c05d7a5f-051b-4dcd-b5f3-37ba8ba7dfb7",
+      "name": "Log Job ID",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        -1504,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the Simpro job ID to execution data so runs are searchable."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "84dbff53-3ea8-4a30-baed-531cce9df4bb",
+              "name": "simproJobUrl",
+              "value": "=https://spl.simprosuite.com/api/v1.0/companies/{{ $json.simpro_company_id }}/jobs/{{ $json.simpro_job_id }}",
+              "type": "string"
+            },
+            {
+              "id": "82e57f8e-44c6-451c-90df-7378ef5172cf",
+              "name": "hubspotPipelineId",
+              "value": "2172954069",
+              "type": "string"
+            },
+            {
+              "id": "e265667c-4d12-4949-807b-09a588d7cfa9",
+              "name": "stagePending",
+              "value": "3783391728",
+              "type": "string"
+            },
+            {
+              "id": "910d5711-e13d-4ff6-9ae3-c732e9897635",
+              "name": "stageProgress",
+              "value": "3783391729",
+              "type": "string"
+            },
+            {
+              "id": "a3125c1f-84f0-4362-86de-97296af0a903",
+              "name": "stageComplete",
+              "value": "3783391730",
+              "type": "string"
+            },
+            {
+              "id": "a8d09e35-71c7-42bc-8d24-a2dd8e65a30d",
+              "name": "stageArchived",
+              "value": "3783391734",
+              "type": "string"
+            },
+            {
+              "id": "8aa6b920-8ee0-4f58-8c6a-6454bc1e2968",
+              "name": "stageDefault",
+              "value": "3783391728",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "7b8d8313-aa32-470c-970c-c81974023c65",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1296,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: Simpro job URL, HubSpot Jobs pipeline ID and stage IDs. Stage fields are matched to Simpro Stage (pending / progress / complete / archived); anything else uses stageDefault."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproJobUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "8af0be33-b628-434d-87d9-08a47cce63ad",
+      "name": "Get Simpro Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1072,
+        80
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Fetches the full job from Simpro. Company and job ID come from the router."
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "eEgc6EYXSSxSkc8D",
+          "mode": "list",
+          "cachedResultName": "SPL Users",
+          "cachedResultUrl": "/projects/43dwW57ugUqGoEUE/datatables/eEgc6EYXSSxSkc8D"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Simpro_ID",
+              "keyValue": "={{ $json.ProjectManager.ID }}"
+            }
+          ]
+        }
+      },
+      "id": "cf94b64c-fc20-43f1-b2c5-f5a15dea91af",
+      "name": "Look Up Project Manager",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -864,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "SPL Users data table: Simpro ProjectManager.ID → HubSpot owner ID. No match = 0 items = the run stops silently."
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "eEgc6EYXSSxSkc8D",
+          "mode": "list",
+          "cachedResultName": "SPL Users",
+          "cachedResultUrl": "/projects/43dwW57ugUqGoEUE/datatables/eEgc6EYXSSxSkc8D"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Simpro_ID",
+              "keyValue": "={{ $('Get Simpro Job').item.json.Salesperson.ID }}"
+            }
+          ]
+        }
+      },
+      "id": "e9381bad-fdae-417c-9b45-aa24b2d7415a",
+      "name": "Look Up Sales Person",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Sets the deal owner. ⚠ Looks up ProjectManager.ID (same as the node before), not the salesperson. Behaviour unchanged, please confirm."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/deals/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  filterGroups: [\n    { filters: [ { propertyName: 'simpro_job_id', operator: 'EQ', value: String($('Get Simpro Job').first().json.ID) } ] },\n  ],\n  properties: ['simpro_job_id'],\n  sorts: ['createdate'],\n  limit: 1,\n}) }}",
+        "options": {}
+      },
+      "id": "9dc484de-b72c-4425-8bcc-1a899b20d772",
+      "name": "Find Deal by Simpro Job ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -448,
+        80
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Searches deals on simpro_job_id (oldest match first, one result). No match returns results: [] so the next node creates the deal."
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Find Deal by Simpro Job ID').first().json.results?.[0] ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://api.hubapi.com/crm/objects/2026-09/deals' + ($('Find Deal by Simpro Job ID').first().json.results?.[0] ? '/' + $('Find Deal by Simpro Job ID').first().json.results[0].id : '') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const job = $('Get Simpro Job').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const day = (iso) => iso ? DateTime.fromISO(iso, { zone: 'utc' }).startOf('day').toMillis() : '';\n  const stages = {\n    pending: cfg.stagePending,\n    progress: cfg.stageProgress,\n    complete: cfg.stageComplete,\n    archived: cfg.stageArchived,\n  };\n  const stageKey = String(job.Stage ?? '').trim().toLowerCase();\n  return {\n    properties: {\n      dealname: job.Name,\n      amount: job.Total?.ExTax,\n      description: job.Notes ?? '',\n      pipeline: cfg.hubspotPipelineId,\n      dealstage: stages[stageKey] ?? cfg.stageDefault,\n      hubspot_owner_id: $('Look Up Sales Person').first().json.HubSpot_ID,\n      project_manager: $('Look Up Project Manager').first().json.HubSpot_ID,\n      simpro_job_id: job.ID,\n      approved_date: day(job.DateApproved),\n      due_date: day(job.DueDate),\n      orderno: job.OrderNo ?? '',\n      simpro_description: job.Description ?? '',\n      project_tags: (job.Tags ?? []).map(tag => tag.ID).join(';'),\n      job_type: job.Type ?? '',\n    },\n  };\n})() }}",
+        "options": {}
+      },
+      "id": "4e58b19e-f0bc-4b4c-afc4-7a9440338b43",
+      "name": "Create or Update Job Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -240,
+        80
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "One node for both paths: PATCH if the search found a deal, otherwise POST. EDIT HERE to add or change a deal field. Not retried (create)."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/deals/{{ $('Create or Update Job Deal').first().json.id }}/associations/line_items?limit=500",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "0c3e56dc-41bb-48b3-b5bd-992e0f9bcb5b",
+      "name": "Get Deal Line Item IDs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -32,
+        80
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists every line item currently on the deal (max 500 per call)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7c022c9c-aff9-4a77-85c1-e3a1df67501c",
+              "leftValue": "={{ String(($('Get Deal Line Item IDs').first().json.results ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "539f27b6-f490-4fde-8745-452e44e35fd0",
+      "name": "Has Line Items To Archive",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "True → archive the existing line items. False → nothing to archive. Tests the GET response on purpose."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/line_items/batch/archive",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  inputs: $('Get Deal Line Item IDs').first().json.results.map(r => ({ id: String(r.toObjectId) })),\n}) }}",
+        "options": {}
+      },
+      "id": "5f98c26b-5004-46d5-be68-597df7798cb8",
+      "name": "Archive Deal Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        384,
+        0
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "One batch call, max 100 per call (HubSpot rejects more with a 400 and the run fails loudly)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproJobUrl }}/sections/?pageSize=250",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "1db55951-e6f9-4128-aabe-85fc3b98bc28",
+      "name": "Get Job Sections",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        592,
+        80
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Fan-out: one item per job section. Runs once even if several items arrive. alwaysOutputData so a job with no sections still reaches the end."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "04e4b781-da6b-4b42-8853-806f3e85b177",
+              "leftValue": "={{ String($json.ID !== undefined && $json.ID !== null) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "7681aa7a-444f-48b7-afdd-f9285b26901d",
+      "name": "Has Job Sections",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "False = job has no sections (empty marker item), so there are no cost centers to fetch. Tests the section response on purpose."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproJobUrl }}/sections/{{ $json.ID }}/costCenters/?pageSize=250",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "5fd090de-f088-48a7-a854-d780a6244b77",
+      "name": "Get Job Cost Centers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1008,
+        0
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Fan-out: one item per cost center, per section. alwaysOutputData so no cost centers at all still continues."
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "costCenters",
+        "options": {}
+      },
+      "id": "332cfe4d-0bd0-4fc0-8cce-285ca735b090",
+      "name": "Collect Cost Centers",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Joins every cost center into one item (costCenters list). Fan-in: everything below runs once."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "429dd2fe-9288-4c23-a95c-f4896ee6d9bc",
+              "leftValue": "={{ String($json.costCenters.some(c => c.ID)) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "e7b7e360-78fa-415f-b399-95d42caab8c8",
+      "name": "Has Cost Centers",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1424,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "False = the job has no cost centers (only an empty marker item). Nothing to create."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/line_items/batch/create",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const dealId = String($('Create or Update Job Deal').first().json.id);\n  const costCenters = $('Collect Cost Centers').first().json.costCenters.filter(c => c.ID);\n  return {\n    inputs: costCenters.map(c => ({\n      properties: {\n        name: c.Name ?? c.CostCenter.Name,\n        quantity: '1',\n        price: c.Total.IncTax.toString(),\n        cost_centre: c.CostCenter.ID.toString(),\n        simpro_id: c.ID.toString(),\n      },\n      associations: [\n        { to: { id: dealId }, types: [ { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 20 } ] },\n      ],\n    })),\n  };\n})() }}",
+        "options": {}
+      },
+      "id": "b52bbffd-2aa2-4ad7-b43d-b0a17f125b5d",
+      "name": "Create Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1632,
+        -80
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "One line item per cost center, associated to the deal. Max 100 per call. EDIT HERE to change line item fields. Not retried (create)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1034a4d9-2242-4967-8e50-5bd07bb41d9e",
+              "name": "dealId",
+              "value": "={{ Number($('Create or Update Job Deal').first().json.id) }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "db7929ae-d295-4cf1-9066-cee7ffa7840c",
+      "name": "Return Deal ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1840,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Returns { dealId } to the router, which uses it for the Site / Contact / Company associations."
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "simpro_job_id": "468672",
+          "simpro_company_id": "4"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Job ID": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Job": {
+      "main": [
+        [
+          {
+            "node": "Look Up Project Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Project Manager": {
+      "main": [
+        [
+          {
+            "node": "Look Up Sales Person",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Sales Person": {
+      "main": [
+        [
+          {
+            "node": "Find Deal by Simpro Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Deal by Simpro Job ID": {
+      "main": [
+        [
+          {
+            "node": "Create or Update Job Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Update Job Deal": {
+      "main": [
+        [
+          {
+            "node": "Get Deal Line Item IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal Line Item IDs": {
+      "main": [
+        [
+          {
+            "node": "Has Line Items To Archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Line Items To Archive": {
+      "main": [
+        [
+          {
+            "node": "Archive Deal Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Job Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Deal Line Items": {
+      "main": [
+        [
+          {
+            "node": "Get Job Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Sections": {
+      "main": [
+        [
+          {
+            "node": "Has Job Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Job Sections": {
+      "main": [
+        [
+          {
+            "node": "Get Job Cost Centers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Deal ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Cost Centers": {
+      "main": [
+        [
+          {
+            "node": "Collect Cost Centers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Cost Centers": {
+      "main": [
+        [
+          {
+            "node": "Has Cost Centers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Cost Centers": {
+      "main": [
+        [
+          {
+            "node": "Create Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Deal ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Line Items": {
+      "main": [
+        [
+          {
+            "node": "Return Deal ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "7ad22247-cd0e-41f3-88c9-2be0154b1589",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "0L9hGb93c3GcRL2B",
+  "tags": []
+}

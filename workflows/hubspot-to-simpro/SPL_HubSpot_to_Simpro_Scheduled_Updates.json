@@ -1,0 +1,699 @@
+{
+  "name": "[SPL] HubSpot -> Simpro (Scheduled Updates)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "50db3d84-4f8e-4dce-a38a-497fda5ec7f6",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "Starts a poll every 30 minutes (production runs only - publish the workflow)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ac57959a-c5ee-435f-ba49-201d0123f374",
+              "name": "hubspotApiUrl",
+              "value": "https://api.hubapi.com/crm/objects/2026-09",
+              "type": "string"
+            },
+            {
+              "id": "5ad7fd4c-d9f4-4bf8-9ded-a4ffb18cc692",
+              "name": "quotePipelineId",
+              "value": "default",
+              "type": "string"
+            },
+            {
+              "id": "c61dcfa3-9b35-4df2-bd7c-4c5a453e6172",
+              "name": "jobPipelineId",
+              "value": "2172954069",
+              "type": "string"
+            },
+            {
+              "id": "bbfc816a-5ca8-4843-ae7b-7f60d9f47d77",
+              "name": "onlySyncedCompanies",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "448da97a-1d39-41cc-9f8a-fe1a582141b9",
+              "name": "onlySyncedContacts",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "5e8ff63d-6f4b-4ce4-96ee-121f5125bca7",
+              "name": "overlapMinutes",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "b5e9cbd6-9ece-4596-a632-fb64915453be",
+              "name": "initialLookbackMinutes",
+              "value": 35,
+              "type": "number"
+            },
+            {
+              "id": "a393efc2-f079-4407-8e81-2d17f8b1d0a5",
+              "name": "windowStartOverride",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "426479f0-7688-4503-aba2-bed9ada8082f",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: HubSpot URL, Quote / Job pipeline IDs, whether Companies and Contacts are limited to ones already linked to Simpro, and the window settings (overlap, first-run lookback, optional start override for a backfill)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync window for the poller. Settings come from Workflow Config.\nconst cfg = $('Workflow Config').first().json;\nconst state = $getWorkflowStaticData('global'); // only persists on production (trigger) runs, not manual test runs\nconst now = new Date();\nlet from;\nlet fromSource;\n\nif (cfg.windowStartOverride) {\n  from = new Date(cfg.windowStartOverride);\n  if (isNaN(from.getTime())) {\n    throw new Error('windowStartOverride is not a valid ISO date-time: ' + cfg.windowStartOverride);\n  }\n  fromSource = 'override';\n} else if (state.lastWindowEnd) {\n  from = new Date(new Date(state.lastWindowEnd).getTime() - Number(cfg.overlapMinutes) * 60000);\n  fromSource = 'watermark';\n} else {\n  from = new Date(now.getTime() - Number(cfg.initialLookbackMinutes) * 60000);\n  fromSource = 'initial lookback';\n}\nif (from.getTime() >= now.getTime()) {\n  throw new Error('Sync window starts in the future (' + from.toISOString() + '). Check windowStartOverride and the saved watermark.');\n}\n\nreturn [{ json: {\n  windowFrom: from.toISOString(),\n  windowTo: now.toISOString(),\n  windowFromMs: from.getTime(), // HubSpot search filters take epoch milliseconds\n  fromSource,\n} }];"
+      },
+      "id": "b2a85c1b-ea16-4fce-a538-1b27e5d7cf50",
+      "name": "Build Sync Window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "Window: last saved window end minus the overlap (or the first-run lookback). Needs Code because the watermark lives in workflow static data. Settings are in Workflow Config."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/companies/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const win = $('Build Sync Window').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const filters = [ { propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: String(win.windowFromMs) } ];\n  if (cfg.onlySyncedCompanies) filters.push({ propertyName: 'simpro_customer_id', operator: 'HAS_PROPERTY' });\n  return { filterGroups: [ { filters } ], properties: ['hs_object_id'], sorts: ['hs_object_id'], limit: 200 };\n})() }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "id": "89130c0c-7770-4a60-9337-5e3bbcab361c",
+      "name": "Fetch Changed Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        656
+      ],
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "HubSpot companies modified since the window start (IDs only, 200 per page). With onlySyncedCompanies on, only companies that already have a Simpro ID. Runs once; chained so each list is fetched exactly once."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const win = $('Build Sync Window').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const filters = [ { propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: String(win.windowFromMs) } ];\n  return { filterGroups: [ { filters } ], properties: ['hs_object_id'], sorts: ['hs_object_id'], limit: 200 };\n})() }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "id": "2c0b938f-ecb8-4f0d-b26c-beceeb8fcac3",
+      "name": "Fetch Changed Sites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        656
+      ],
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "HubSpot Sites (object 0-420) modified since the window start."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/contacts/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const win = $('Build Sync Window').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const filters = [ { propertyName: 'lastmodifieddate', operator: 'GTE', value: String(win.windowFromMs) } ];\n  if (cfg.onlySyncedContacts) filters.push({ propertyName: 'simpro_contact_id', operator: 'HAS_PROPERTY' });\n  return { filterGroups: [ { filters } ], properties: ['hs_object_id'], sorts: ['hs_object_id'], limit: 200 };\n})() }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "id": "b0a4cc86-3710-4768-ab6a-f6bb2491fb49",
+      "name": "Fetch Changed Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1200,
+        656
+      ],
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "HubSpot contacts modified since the window start (contacts use lastmodifieddate). With onlySyncedContacts on, only contacts that already have a Simpro ID."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const win = $('Build Sync Window').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const filters = [ { propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: String(win.windowFromMs) } ];\n  filters.push({ propertyName: 'pipeline', operator: 'EQ', value: cfg.quotePipelineId });\n  return { filterGroups: [ { filters } ], properties: ['hs_object_id'], sorts: ['hs_object_id'], limit: 200 };\n})() }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "id": "4a91411a-6658-4fe0-8fd1-c9c7043d3832",
+      "name": "Fetch Changed Quote Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1440,
+        656
+      ],
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "HubSpot deals in the Quote pipeline modified since the window start."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const win = $('Build Sync Window').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const filters = [ { propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: String(win.windowFromMs) } ];\n  filters.push({ propertyName: 'pipeline', operator: 'EQ', value: cfg.jobPipelineId });\n  return { filterGroups: [ { filters } ], properties: ['hs_object_id'], sorts: ['hs_object_id'], limit: 200 };\n})() }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "id": "a3bcd6d8-d608-48a6-af04-e89bfbf182ef",
+      "name": "Fetch Changed Job Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1680,
+        656
+      ],
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "HubSpot deals in the Jobs pipeline modified since the window start."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the five HubSpot \"changed since\" searches into ONE item per changed record, shaped exactly like\n// the webhook payload the HubSpot -> Simpro router already understands:\n//   { body: [ { objectId, objectTypeId, subscriptionType } ] }\nconst win = $('Build Sync Window').first().json;\n\nconst SOURCES = [\n  { node: 'Fetch Changed Companies',   type: 'Company', objectTypeId: '0-2',   subscriptionType: 'company.propertyChange' },\n  { node: 'Fetch Changed Sites',       type: 'Site',    objectTypeId: '0-420', subscriptionType: 'object.propertyChange' },\n  { node: 'Fetch Changed Contacts',    type: 'Contact', objectTypeId: '0-1',   subscriptionType: 'contact.propertyChange' },\n  { node: 'Fetch Changed Quote Deals', type: 'Quote',   objectTypeId: '0-3',   subscriptionType: 'deal.propertyChange' },\n  { node: 'Fetch Changed Job Deals',   type: 'Job',     objectTypeId: '0-3',   subscriptionType: 'deal.propertyChange' },\n];\n\nconst records = [];\nconst counts = {};\n\nfor (const s of SOURCES) {\n  const pages = $(s.node).all().map(i => i.json); // one item per page of results\n  const seen = new Set();\n  let rows = 0;\n  let reportedTotal = null;\n\n  for (const page of pages) {\n    if (!Array.isArray(page.results)) {\n      throw new Error(s.node + ': expected a results array from HubSpot, got ' + JSON.stringify(page).slice(0, 300));\n    }\n    if (reportedTotal === null && page.total !== undefined) reportedTotal = Number(page.total);\n    for (const row of page.results) {\n      if (row === null || typeof row !== 'object' || !row.id) {\n        throw new Error(s.node + ': a returned record has no id.');\n      }\n      rows++;\n      if (seen.has(row.id)) continue;\n      seen.add(row.id);\n      records.push({ json: {\n        hasRecords: true,\n        body: [{ objectId: Number(row.id), objectTypeId: s.objectTypeId, subscriptionType: s.subscriptionType }],\n        meta: { source: 'poll', type: s.type, windowFrom: win.windowFrom, windowTo: win.windowTo },\n      } });\n    }\n  }\n\n  // The page cap (50 x 200 = HubSpot's 10,000 search limit) stops silently - fail loudly instead of syncing a partial window.\n  if (reportedTotal !== null && rows < reportedTotal) {\n    throw new Error(s.node + ': read ' + rows + ' of ' + reportedTotal + ' changed records (HubSpot search limit reached). '\n      + 'Shorten the window (windowStartOverride) and run again.');\n  }\n  counts[s.type] = seen.size;\n}\n\nif (records.length === 0) {\n  return [{ json: { hasRecords: false, windowFrom: win.windowFrom, windowTo: win.windowTo, counts } }];\n}\nreturn records;"
+      },
+      "id": "682bd60a-9957-4797-a09d-9fbef884488f",
+      "name": "Build Record List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per changed record, shaped like the HubSpot webhook payload. Fails loudly on a bad shape or a truncated result set."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "50c613bc-cb04-4cbb-bc59-f0cd5e04808e",
+              "leftValue": "={{ String($json.hasRecords) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "752eb0f9-c575-4c73-9c46-5049edfecd75",
+      "name": "Has Records",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2160,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "True: at least one changed record - loop. False: empty window - go straight to Finish Run so the window still advances."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "71678edb-a23f-40ed-8b83-1b4f5043c62f",
+      "name": "Loop Over Records",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2400,
+        560
+      ],
+      "notesInFlow": true,
+      "notes": "One record at a time (batch 1). Output 0 = done, output 1 = next record."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "vEEMhBa6bLX4uH7o",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/vEEMhBa6bLX4uH7o",
+          "cachedResultName": "[SPL] HubSpot-> Simpro (Real Time)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2640,
+        720
+      ],
+      "id": "ce1910e0-8d30-415c-b4d6-d2826f228fd5",
+      "name": "Sync Record",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Runs the HubSpot -> Simpro router for this one record and waits. A failure is captured (not thrown) so the rest of the batch still runs; Finish Run raises it at the end."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "121ca88a-1640-4675-beff-34b8213b4bd1",
+              "name": "ok",
+              "value": "={{ !$input.all().some(i => i.json && i.json.error) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "e3674cd7-b6e4-4d8c-863e-c2a8616af40f",
+              "name": "type",
+              "value": "={{ $('Loop Over Records').first().json.meta.type }}",
+              "type": "string"
+            },
+            {
+              "id": "accd6d1f-831c-416c-9c90-303950d03188",
+              "name": "id",
+              "value": "={{ String($('Loop Over Records').first().json.body[0].objectId) }}",
+              "type": "string"
+            },
+            {
+              "id": "30e45abf-1bb2-4247-a584-b7517932f312",
+              "name": "error",
+              "value": "={{ (() => {\n  const f = $input.all().map(i => i.json).find(j => j && j.error);\n  if (!f) return '';\n  const e = f.error;\n  return typeof e === 'string' ? e : ((e && (e.message || e.description)) || JSON.stringify(e));\n})() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "53e987e7-bb91-4759-ba00-4c0451057fce",
+      "name": "Note Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2880,
+        720
+      ],
+      "notesInFlow": true,
+      "executeOnce": true,
+      "notes": "Collapses the sub-workflow output to ONE ok/failed item per record and feeds it back into the loop. Runs once per record (executeOnce), no Code needed."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs ONCE per poll: when the loop is finished, or straight away when there was nothing to sync.\n// Fails the run (-> error workflow) if any record failed; only advances the watermark on full success.\nconst win = $('Build Sync Window').first().json;\nconst expected = $('Build Record List').all().filter(i => i.json.hasRecords === true).length;\nconst results = $input.all().map(i => i.json).filter(j => j.ok !== undefined);\n\nif (results.length !== expected) {\n  throw new Error('Poll loop returned ' + results.length + ' result(s) for ' + expected\n    + ' record(s) - NOT advancing the window. Check the Loop Over Records wiring.');\n}\n\nconst failed = results.filter(r => r.ok === false);\nif (failed.length > 0) {\n  const lines = failed.slice(0, 20).map(f => '- ' + f.type + ' ' + f.id + ': ' + f.error);\n  throw new Error(failed.length + ' of ' + results.length + ' record(s) failed for window '\n    + win.windowFrom + ' to ' + win.windowTo + '. The window is NOT advanced, so the next run re-reads it '\n    + '(upserts are idempotent).\\n' + lines.join('\\n'));\n}\n\n// Full success: advance the watermark. Only persists on production (trigger) runs.\nconst state = $getWorkflowStaticData('global');\nstate.lastWindowEnd = win.windowTo;\n\nconst byType = {};\nfor (const r of results) byType[r.type] = (byType[r.type] || 0) + 1;\n\nreturn [{ json: {\n  status: 'ok',\n  recordsSynced: results.length,\n  byType,\n  windowFrom: win.windowFrom,\n  windowTo: win.windowTo,\n  windowStartedFrom: win.fromSource,\n  watermarkSavedTo: win.windowTo,\n} }];"
+      },
+      "id": "f3f1ae1f-9710-4be4-8fe8-c679988ecc3e",
+      "name": "Finish Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        464
+      ],
+      "notesInFlow": true,
+      "notes": "Once per poll: throws if any record failed (window not advanced, next run retries it); otherwise saves the new window end. Needs Code for the saved watermark."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Build Sync Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sync Window": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Companies": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Sites": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Contacts": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Quote Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Quote Deals": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Job Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Job Deals": {
+      "main": [
+        [
+          {
+            "node": "Build Record List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record List": {
+      "main": [
+        [
+          {
+            "node": "Has Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Records": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Records",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Records": {
+      "main": [
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sync Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Record": {
+      "main": [
+        [
+          {
+            "node": "Note Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Note Result": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "840cddbb-9d13-4790-80ee-ef4eb8da760e",
+  "meta": {
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "6YB8h0KwUMMTervb",
+  "tags": []
+}

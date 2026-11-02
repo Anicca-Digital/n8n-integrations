@@ -1,0 +1,285 @@
+{
+  "name": "[SPL] Upsert Contact in HubSpot",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"simpro_contact_id\": 123\n}"
+      },
+      "id": "171b6954-409c-44e8-a81f-3588dbf0c3e9",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $json.simpro_contact_id }}"
+            }
+          ]
+        }
+      },
+      "id": "384e7b4d-3379-477d-a919-eb497055f674",
+      "name": "Log Contact ID",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the Simpro contact ID to execution data so runs are searchable."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14ea46fc-45e2-42e5-877e-abfc25587492",
+              "name": "hubspotContactsUrl",
+              "value": "https://api.hubapi.com/crm/objects/2026-09/contacts",
+              "type": "string"
+            },
+            {
+              "id": "426a413e-7bcd-4511-8e92-c75305c168e6",
+              "name": "simproContactsUrl",
+              "value": "https://spl.simprosuite.com/api/v1.0/companies/0/contacts",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "aa6c47bd-5522-418e-a59c-776302d3e314",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: HubSpot contacts URL and Simpro contacts URL (company 0 is hardcoded)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproContactsUrl }}/{{ $('When Executed by Another Workflow').first().json.simpro_contact_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "a6c126e7-833c-4dcd-8757-9f2193150d78",
+      "name": "Get Simpro Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        576,
+        0
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Fetches the current Contact from Simpro. This is the source for every HubSpot field."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotContactsUrl }}/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  filterGroups: [\n    { filters: [ { propertyName: 'simpro_contact_id', operator: 'EQ', value: String($('Get Simpro Contact').first().json.ID) } ] },\n  ],\n  properties: ['simpro_contact_id'],\n  sorts: ['createdate'],\n  limit: 1,\n}) }}",
+        "options": {}
+      },
+      "id": "f1388660-48bc-462c-859d-85e8e177db49",
+      "name": "Find HubSpot Contact by Simpro ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        784,
+        0
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Searches HubSpot contacts on simpro_contact_id (oldest match first, one result). No match returns results: []."
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Find HubSpot Contact by Simpro ID').first().json.results?.[0] ? 'PATCH' : 'POST' }}",
+        "url": "={{ $('Workflow Config').first().json.hubspotContactsUrl + ($('Find HubSpot Contact by Simpro ID').first().json.results?.[0] ? '/' + $('Find HubSpot Contact by Simpro ID').first().json.results[0].id : '/batch/upsert') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const contact = $('Get Simpro Contact').first().json;\n  const found = $('Find HubSpot Contact by Simpro ID').first().json.results?.[0];\n  const blank = (v) => v === null || v === undefined || v === '' || v === 'null';\n  const keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => !blank(v)).map(([k, v]) => [k, String(v)]));\n  const properties = keep({\n    simpro_contact_id: contact.ID,\n    firstname: contact.GivenName,\n    lastname: contact.FamilyName,\n    jobtitle: contact.Position,\n    phone: contact.WorkPhone,\n    salutation: contact.Title,\n    department: contact.Department,\n  });\n  return found\n    ? { properties }\n    : { inputs: [ { idProperty: 'email', id: contact.Email, properties } ] };\n})() }}",
+        "options": {}
+      },
+      "id": "557bc3bc-4798-413d-92de-900475e772d6",
+      "name": "Create or Update HubSpot Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        992,
+        0
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Found by simpro_contact_id → PATCH that contact (email left alone). Not found → upsert by the Simpro email: links an existing HubSpot contact with that email, or creates one, and stamps simpro_contact_id. EDIT HERE to change the field map. Blank Simpro values are skipped. Not retried (create)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "38b7403c-db8e-44ab-b037-4b3398993c10",
+              "name": "id",
+              "value": "={{ Number($('Create or Update HubSpot Contact').first().json.id ?? $('Create or Update HubSpot Contact').first().json.results?.[0]?.id) }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8d241244-c018-4c80-959b-6a18670dffd4",
+      "name": "Return HubSpot Contact ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Final output to the parent: { id } (the HubSpot contact ID). Works for the PATCH response (id) and the batch upsert response (results[0].id)."
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "GivenName": "Yeran",
+          "FamilyName": "Hettiarachchy",
+          "Email": "yeran.hettiarachchy@aniccadigital.io",
+          "WorkPhone": "0490399217",
+          "Title": "test1231",
+          "Department": "Test",
+          "Salutation": "Mr",
+          "simpro_contact_id": 263464
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Contact ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Contact ID": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Contact": {
+      "main": [
+        [
+          {
+            "node": "Find HubSpot Contact by Simpro ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find HubSpot Contact by Simpro ID": {
+      "main": [
+        [
+          {
+            "node": "Create or Update HubSpot Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Update HubSpot Contact": {
+      "main": [
+        [
+          {
+            "node": "Return HubSpot Contact ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "2b3e8fd4-503f-4218-982d-ddc29aaa8001",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "5caBn6ptLfhDhO1L",
+  "tags": []
+}
