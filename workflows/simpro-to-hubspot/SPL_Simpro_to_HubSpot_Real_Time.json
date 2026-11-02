@@ -206,24 +206,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists contacts currently linked to this HubSpot Site."
+      "notes": "Lists the primary contact links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/0-420/contacts/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/0-420/contacts/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        80
+        1504,
+        0
       ],
       "id": "066b82c1-a6f0-4be9-b338-cec09c8cffbe",
       "name": "Archive Site-Contact Associations",
@@ -234,22 +234,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Site→Contact links so Simpro becomes the source of truth."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Site in HubSpot').first().json.id },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        832,
-        80
-      ],
-      "id": "027c251c-a632-42cb-b29b-2db020fdad14",
-      "name": "Build Archive Site-Contact Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Site→Contact link."
+      "notes": "Unlinks only the primary contact Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -334,38 +319,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1280,
+        832,
         80
       ],
       "id": "ae46e121-aeee-4ebb-b04b-ef17bf8bf31f",
       "name": "Upsert Site Primary Contact",
       "notesInFlow": true,
       "notes": "Sub-workflow: upserts the Site's PrimaryContact from Simpro. Fails if the site has no primary contact."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/0-420/{{ $('Upsert Site in HubSpot').item.json.id }}/associations/default/contacts/{{ $json.id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1504,
-        80
-      ],
-      "id": "4b6767d9-2be1-47a6-a811-7257ab8f8ef7",
-      "name": "Associate Site with Contact",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Re-links the Site to its primary contact. Deliberate dead end — branch finishes here."
     },
     {
       "parameters": {
@@ -389,24 +349,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists companies currently linked to this HubSpot Site."
+      "notes": "Lists companies currently linked in HubSpot. Compared with Simpro after the loop."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/0-420/companies/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/0-420/companies/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        592
+        2176,
+        512
       ],
       "id": "7f3e95e4-040c-41f3-9f67-775aa822a288",
       "name": "Archive Site-Company Associations",
@@ -417,22 +377,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Site→Company links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Site in HubSpot').first().json.id },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        832,
-        592
-      ],
-      "id": "0ea3f741-dee1-4e86-862e-f31efd175944",
-      "name": "Build Archive Site-Company Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Site→Company link."
+      "notes": "Unlinks only the companies Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -471,70 +416,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1728,
-        352
+        1504,
+        576
       ],
       "id": "5bd0fb5c-f74c-4648-9867-3fed4406cf96",
       "name": "Upsert Site Customer",
       "notesInFlow": true,
-      "notes": "Sub-workflow: upserts this customer as a HubSpot Company."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/0-420/{{ $json.site_id }}/associations/default/companies/{{ $json.company_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1280,
-        272
-      ],
-      "id": "f513f32d-0e9b-4044-bb90-6f5737a0f537",
-      "name": "Associate Site with Company",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links Site → Company, then returns to the loop for the next customer."
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "Customers",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [
-        1056,
-        784
-      ],
-      "id": "e1eed67e-3428-43ab-9cc6-5f680cea930e",
-      "name": "Split Out Site Customers",
-      "notesInFlow": true,
-      "notes": "FAN-OUT: one item per Simpro customer on this site."
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1280,
-        688
-      ],
-      "id": "b1707eff-bbc7-4ca1-9688-8024b8e14852",
-      "name": "Wait for Site-Company Archive",
-      "notesInFlow": true,
-      "notes": "Holds the customer list until the archive has finished, then passes input 2 (the customers) on."
+      "notes": "Sub-workflow: upserts this company in HubSpot and returns its id, then back to the loop."
     },
     {
       "parameters": {
@@ -545,30 +433,13 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1504,
-        272
+        1280,
+        496
       ],
       "id": "74ddb2c3-4c98-485c-9a19-b7325d6004ba",
       "name": "Loop Over Site Customers",
       "notesInFlow": true,
-      "notes": "Processes site customers one at a time (batch 1)."
-    },
-    {
-      "parameters": {
-        "mode": "combineBySql",
-        "query": "SELECT input1.id AS site_id, input2.id AS company_id\nFROM input1, input2",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1056,
-        352
-      ],
-      "id": "cb9b14f8-70d9-4751-b9ba-35c6884f7070",
-      "name": "Pair Site with Company",
-      "notesInFlow": true,
-      "notes": "Joins the HubSpot site id (input 1) with this loop’s company id (input 2)."
+      "notes": "One company at a time. Output 0 (done) carries every upserted HubSpot id to the plan."
     },
     {
       "parameters": {
@@ -616,24 +487,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists contacts currently linked to this HubSpot Company."
+      "notes": "Lists contacts currently linked in HubSpot. Compared with Simpro after the loop."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/companies/contacts/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/companies/contacts/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        1344
+        2176,
+        1264
       ],
       "id": "0dc45546-1ed7-4fea-b125-f846814eb54b",
       "name": "Archive Company-Contact Associations",
@@ -644,22 +515,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Company→Contact links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Company in HubSpot').first().json.id },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        832,
-        1344
-      ],
-      "id": "8bc6dcc5-5572-478d-8667-18d2e766e6ce",
-      "name": "Build Archive Company-Contact Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Company→Contact link."
+      "notes": "Unlinks only the contacts Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -743,70 +599,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1728,
-        1104
+        1504,
+        1328
       ],
       "id": "2a5324a0-0bbf-4308-9ef8-69ae3cbbf4dc",
       "name": "Upsert Company Contact",
       "notesInFlow": true,
-      "notes": "Sub-workflow: upserts this contact in HubSpot."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/companies/{{ $json.company_id }}/associations/default/contacts/{{ $json.contact_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1280,
-        1040
-      ],
-      "id": "de7e1bcf-3c97-4b97-8a9b-105b2f46c807",
-      "name": "Associate Company with Contact",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links Company → Contact, then returns to the loop."
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "Contacts",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [
-        1056,
-        2016
-      ],
-      "id": "d37cb036-fa20-434e-962b-d863461fcf7f",
-      "name": "Split Out Company Contacts",
-      "notesInFlow": true,
-      "notes": "FAN-OUT: one item per Simpro contact on this customer."
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1280,
-        1344
-      ],
-      "id": "6b1cb9bc-0029-498a-a9b7-d2ba060562b9",
-      "name": "Wait for Company-Contact Archive",
-      "notesInFlow": true,
-      "notes": "Holds the contact list until the archive has finished."
+      "notes": "Sub-workflow: upserts this contact in HubSpot and returns its id, then back to the loop."
     },
     {
       "parameters": {
@@ -817,30 +616,13 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1504,
-        1040
+        1280,
+        1248
       ],
       "id": "924ea11b-6edf-4ce7-b71f-9e9c463425c1",
       "name": "Loop Over Company Contacts",
       "notesInFlow": true,
-      "notes": "Processes company contacts one at a time."
-    },
-    {
-      "parameters": {
-        "mode": "combineBySql",
-        "query": "SELECT input1.id AS company_id, input2.id AS contact_id\nFROM input1, input2",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1056,
-        1104
-      ],
-      "id": "8e68a13e-42b3-4015-b425-2ec75abbd105",
-      "name": "Pair Company with Contact",
-      "notesInFlow": true,
-      "notes": "Joins the HubSpot company id with this loop’s contact id."
+      "notes": "One contact at a time. Output 0 (done) carries every upserted HubSpot id to the plan."
     },
     {
       "parameters": {
@@ -864,24 +646,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists sites currently linked to this HubSpot Company."
+      "notes": "Lists sites currently linked in HubSpot. Compared with Simpro after the loop."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/companies/0-420/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/companies/0-420/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        1824
+        2176,
+        1744
       ],
       "id": "bae83ce9-0147-4099-abd5-3bdfe1fa551e",
       "name": "Archive Company-Site Associations",
@@ -892,22 +674,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Company→Site links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Company in HubSpot').first().json.id },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        832,
-        1824
-      ],
-      "id": "53054d64-f09f-4377-9dc0-42673210317e",
-      "name": "Build Archive Company-Site Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Company→Site link."
+      "notes": "Unlinks only the sites Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -946,70 +713,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1728,
-        1616
+        1504,
+        1808
       ],
       "id": "a814e06d-b1a5-477c-8fb6-1a73ae08e810",
       "name": "Upsert Company Site",
       "notesInFlow": true,
-      "notes": "Sub-workflow: upserts this site in HubSpot."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/companies/{{ $json.company_id }}/associations/default/0-420/{{ $json.site_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1280,
-        1536
-      ],
-      "id": "1d81ce22-7aac-4b2f-93a8-1e18eaf1670a",
-      "name": "Associate Company with Site",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links Company → Site, then returns to the loop."
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "Sites",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [
-        1056,
-        2208
-      ],
-      "id": "100b1fa6-ae7c-4449-9c0c-2c941efcd2d7",
-      "name": "Split Out Company Sites",
-      "notesInFlow": true,
-      "notes": "FAN-OUT: one item per Simpro site on this customer."
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1280,
-        2016
-      ],
-      "id": "9cf1c56a-cbbd-4cc1-95d4-065423063e8e",
-      "name": "Wait for Company-Site Archive",
-      "notesInFlow": true,
-      "notes": "Holds the site list until the archive has finished."
+      "notes": "Sub-workflow: upserts this site in HubSpot and returns its id, then back to the loop."
     },
     {
       "parameters": {
@@ -1020,30 +730,13 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1504,
-        1536
+        1280,
+        1728
       ],
       "id": "6743ccb5-3ba0-44f9-ada9-f261b126cf5e",
       "name": "Loop Over Company Sites",
       "notesInFlow": true,
-      "notes": "Processes company sites one at a time."
-    },
-    {
-      "parameters": {
-        "mode": "combineBySql",
-        "query": "SELECT input1.id AS company_id, input2.id AS site_id\nFROM input1, input2",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1056,
-        1616
-      ],
-      "id": "6e0fd96e-e107-41a3-88a0-0fb07770e2c3",
-      "name": "Pair Company with Site",
-      "notesInFlow": true,
-      "notes": "Joins the HubSpot company id with this loop’s site id."
+      "notes": "One site at a time. Output 0 (done) carries every upserted HubSpot id to the plan."
     },
     {
       "parameters": {
@@ -1091,24 +784,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists companies currently linked to this HubSpot Contact."
+      "notes": "Lists companies currently linked in HubSpot. Compared with Simpro after the loop."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/contacts/companies/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/contacts/companies/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        2736
+        2176,
+        2656
       ],
       "id": "b0b3caab-7ea4-4707-b1c9-40e721ff0631",
       "name": "Archive Contact-Company Associations",
@@ -1119,22 +812,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Contact→Company links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Contact in HubSpot').first().json.id },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        832,
-        2736
-      ],
-      "id": "5c71feb3-604f-4769-bed8-9b30db18c27d",
-      "name": "Build Archive Contact-Company Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Contact→Company link."
+      "notes": "Unlinks only the companies Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -1218,70 +896,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1728,
-        2496
+        1504,
+        2720
       ],
       "id": "488549fe-d175-473e-8a31-ac58badcfa4d",
       "name": "Upsert Contact Company",
       "notesInFlow": true,
-      "notes": "Sub-workflow: upserts this customer as a HubSpot Company."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/contacts/{{ $json.contact_id }}/associations/default/companies/{{ $json.company_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1280,
-        2432
-      ],
-      "id": "b485f32a-f2ba-4e0f-b7a3-37cf528f990e",
-      "name": "Associate Contact with Company",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links Contact → Company, then returns to the loop."
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "Customers",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [
-        1056,
-        3392
-      ],
-      "id": "d9a2a27e-f100-42bc-a5f9-6ec7e85b4228",
-      "name": "Split Out Contact Companies",
-      "notesInFlow": true,
-      "notes": "FAN-OUT: one item per Simpro customer on this contact."
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1280,
-        2736
-      ],
-      "id": "b78f3c04-2dbb-4756-9c73-3cd078b25def",
-      "name": "Wait for Contact-Company Archive",
-      "notesInFlow": true,
-      "notes": "Holds the customer list until the archive has finished."
+      "notes": "Sub-workflow: upserts this company in HubSpot and returns its id, then back to the loop."
     },
     {
       "parameters": {
@@ -1292,30 +913,13 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1504,
-        2432
+        1280,
+        2640
       ],
       "id": "1d4a7498-1ea7-44e7-8c88-a6b6ed51f86e",
       "name": "Loop Over Contact Companies",
       "notesInFlow": true,
-      "notes": "Processes contact customers one at a time."
-    },
-    {
-      "parameters": {
-        "mode": "combineBySql",
-        "query": "SELECT input1.id AS contact_id, input2.id AS company_id\nFROM input1, input2",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1056,
-        2496
-      ],
-      "id": "c720b31a-ce04-4ce7-8bb8-bb58b6ec9b16",
-      "name": "Pair Contact with Company",
-      "notesInFlow": true,
-      "notes": "Joins the HubSpot contact id with this loop’s company id."
+      "notes": "One company at a time. Output 0 (done) carries every upserted HubSpot id to the plan."
     },
     {
       "parameters": {
@@ -1339,24 +943,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists sites currently linked to this HubSpot Contact."
+      "notes": "Lists sites currently linked in HubSpot. Compared with Simpro after the loop."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/contacts/0-420/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/contacts/0-420/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        3200
+        2176,
+        3120
       ],
       "id": "a41cb579-f207-4cb0-b023-01e9c9779632",
       "name": "Archive Contact-Site Associations",
@@ -1367,22 +971,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Contact→Site links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Contact in HubSpot').first().json.id },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        832,
-        3200
-      ],
-      "id": "30604299-ca48-4222-8e50-08266a453923",
-      "name": "Build Archive Contact-Site Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Contact→Site link."
+      "notes": "Unlinks only the sites Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -1421,70 +1010,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1728,
-        3008
+        1504,
+        3184
       ],
       "id": "a3fd9625-3c11-4fcf-88cf-9847bc82e136",
       "name": "Upsert Contact Site",
       "notesInFlow": true,
-      "notes": "Sub-workflow: upserts this site in HubSpot."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/contacts/{{ $json.contact_id }}/associations/default/0-420/{{ $json.site_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1280,
-        2928
-      ],
-      "id": "5ab64df8-5b3c-4c09-8581-ce0f2502d3e3",
-      "name": "Associate Contact with Site",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links Contact → Site, then returns to the loop."
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "Sites",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [
-        1056,
-        3584
-      ],
-      "id": "55b144cc-db64-4f22-835b-a44008813dd5",
-      "name": "Split Out Contact Sites",
-      "notesInFlow": true,
-      "notes": "FAN-OUT: one item per Simpro site on this contact."
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1280,
-        3392
-      ],
-      "id": "38d25a7f-49a4-4282-9117-491c7f0876f3",
-      "name": "Wait for Contact-Site Archive",
-      "notesInFlow": true,
-      "notes": "Holds the site list until the archive has finished."
+      "notes": "Sub-workflow: upserts this site in HubSpot and returns its id, then back to the loop."
     },
     {
       "parameters": {
@@ -1495,30 +1027,13 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1504,
-        2928
+        1280,
+        3104
       ],
       "id": "bb98bc87-4868-40ad-9e86-aa5204018fb0",
       "name": "Loop Over Contact Sites",
       "notesInFlow": true,
-      "notes": "Processes contact sites one at a time."
-    },
-    {
-      "parameters": {
-        "mode": "combineBySql",
-        "query": "SELECT input1.id AS contact_id, input2.id AS site_id\nFROM input1, input2",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1056,
-        3008
-      ],
-      "id": "6cd8462f-28d7-48c2-a137-be6f7a1d7568",
-      "name": "Pair Contact with Site",
-      "notesInFlow": true,
-      "notes": "Joins the HubSpot contact id with this loop’s site id."
+      "notes": "One site at a time. Output 0 (done) carries every upserted HubSpot id to the plan."
     },
     {
       "parameters": {
@@ -1738,63 +1253,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1488,
+        1088,
         3792
       ],
       "id": "0d74a7a7-cf62-45a0-b017-9debd1e53e46",
       "name": "Upsert Quote Site",
       "notesInFlow": true,
       "notes": "Sub-workflow: upserts the quote’s Site in HubSpot."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/0-420/{{ $json.id }}/associations/default/deals/{{ $('Upsert Quote Deal in HubSpot').item.json.dealId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1680,
-        3792
-      ],
-      "id": "4e898ccb-d3b1-481f-81d3-005163b7d287",
-      "name": "Associate Quote Deal with Site",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links the Deal to the site. Branch ends here."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/contacts/{{ $json.id }}/associations/default/deals/{{ $('Upsert Quote Deal in HubSpot').item.json.dealId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1680,
-        3984
-      ],
-      "id": "f506fa0c-1db6-4ce3-aa75-a76c8410ec0c",
-      "name": "Associate Quote Deal with Contact",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links the Deal to the contact. Branch ends here."
     },
     {
       "parameters": {
@@ -1832,7 +1297,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1488,
+        1088,
         3984
       ],
       "id": "972c7666-0651-4c66-bd5e-a02af3cd5fab",
@@ -1876,38 +1341,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1488,
+        1056,
         4176
       ],
       "id": "6c4b0b0a-8345-4e64-8421-6e316776509a",
       "name": "Upsert Quote Company",
       "notesInFlow": true,
       "notes": "Sub-workflow: upserts the quote’s Customer as a HubSpot Company."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/companies/{{ $json.id }}/associations/default/deals/{{ $('Upsert Quote Deal in HubSpot').item.json.dealId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1680,
-        4176
-      ],
-      "id": "769fdd0a-f6e7-464d-9f56-7e644ff69f3c",
-      "name": "Associate Quote Deal with Company",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links the Deal to the company. Branch ends here."
     },
     {
       "parameters": {
@@ -1931,24 +1371,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists contacts currently linked to the quote Deal."
+      "notes": "Lists the contact links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/deals/contacts/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1312,
-        3984
+        1760,
+        3904
       ],
       "id": "87aaa6bc-4400-4972-8e05-f1d572ce46fd",
       "name": "Archive Quote Deal-Contact Associations",
@@ -1959,22 +1399,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Deal→Contact links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Quote Deal in HubSpot').first().json.dealId },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1088,
-        3984
-      ],
-      "id": "0f2b1317-fb35-47d2-845d-fcc188ed023a",
-      "name": "Build Archive Quote Deal-Contact Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Deal→Contact link."
+      "notes": "Unlinks only the contact Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -1998,24 +1423,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists sites currently linked to the quote Deal."
+      "notes": "Lists the site links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/deals/0-420/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/0-420/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1312,
-        3792
+        1760,
+        3712
       ],
       "id": "13446d4c-5a5e-4971-8999-c4d2f61e522b",
       "name": "Archive Quote Deal-Site Associations",
@@ -2026,22 +1451,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Deal→Site links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Quote Deal in HubSpot').first().json.dealId },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1088,
-        3792
-      ],
-      "id": "c53d06c3-eea9-46f7-96c7-4044f827c567",
-      "name": "Build Archive Quote Deal-Site Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Deal→Site link."
+      "notes": "Unlinks only the site Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -2065,24 +1475,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists companys currently linked to the quote Deal."
+      "notes": "Lists the company links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/deals/companies/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/companies/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1280,
-        4176
+        1728,
+        4096
       ],
       "id": "c8463f10-4bdf-4d9c-ab26-02ff17c8bcdf",
       "name": "Archive Quote Deal-Company Associations",
@@ -2093,22 +1503,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Deal→Company links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Quote Deal in HubSpot').first().json.dealId },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1056,
-        4176
-      ],
-      "id": "0ba85067-df28-4fa3-9ec3-a51013faf18d",
-      "name": "Build Archive Quote Deal-Company Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Deal→Company link."
+      "notes": "Unlinks only the company Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -2251,63 +1646,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1456,
+        1056,
         4448
       ],
       "id": "195c5620-a315-4b78-a89f-34d5c24b0606",
       "name": "Upsert Job Site",
       "notesInFlow": true,
       "notes": "Sub-workflow: upserts the job’s Site in HubSpot."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/0-420/{{ $json.id }}/associations/default/deals/{{ $('Upsert Job Deal in HubSpot').item.json.dealId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1648,
-        4448
-      ],
-      "id": "4c376ac2-dd8e-49c8-bb96-5b75a46b3d53",
-      "name": "Associate Job Deal with Site",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links the Deal to the site. Branch ends here."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/contacts/{{ $json.id }}/associations/default/deals/{{ $('Upsert Job Deal in HubSpot').item.json.dealId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1648,
-        4640
-      ],
-      "id": "f7678c5b-8a0a-4d48-ae04-b55768e267e0",
-      "name": "Associate Job Deal with Contact",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links the Deal to the contact. Branch ends here."
     },
     {
       "parameters": {
@@ -2346,7 +1691,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1456,
+        1056,
         4640
       ],
       "id": "2628e51d-9390-485f-8837-94ce2db2ea87",
@@ -2391,38 +1736,13 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1456,
+        1024,
         4848
       ],
       "id": "1da17ef8-cf03-40cc-9b45-f0250cd54dbe",
       "name": "Upsert Job Company",
       "notesInFlow": true,
       "notes": "Sub-workflow: upserts the job’s Customer as a HubSpot Company."
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/2026-09/objects/companies/{{ $json.id }}/associations/default/deals/{{ $('Upsert Job Deal in HubSpot').item.json.dealId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1648,
-        4848
-      ],
-      "id": "18169238-a69a-42f7-a519-b046c6836586",
-      "name": "Associate Job Deal with Company",
-      "notesInFlow": true,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "YLZLsLfN752HplsL",
-          "name": "SPL Account"
-        }
-      },
-      "notes": "Links the Deal to the company. Branch ends here."
     },
     {
       "parameters": {
@@ -2446,24 +1766,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists contacts currently linked to the job Deal."
+      "notes": "Lists the contact links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/deals/contacts/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1280,
-        4640
+        1728,
+        4560
       ],
       "id": "85b0287a-ed26-4ffe-b401-ef2a1b624fb8",
       "name": "Archive Job Deal-Contact Associations",
@@ -2474,22 +1794,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Deal→Contact links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Job Deal in HubSpot').first().json.dealId },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1056,
-        4640
-      ],
-      "id": "9bc071e9-ccf5-4d7b-a9b6-119d1309bc7d",
-      "name": "Build Archive Job Deal-Contact Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Deal→Contact link."
+      "notes": "Unlinks only the contact Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -2513,24 +1818,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists sites currently linked to the job Deal."
+      "notes": "Lists the site links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/deals/0-420/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/0-420/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1280,
-        4448
+        1728,
+        4368
       ],
       "id": "9ca34cfc-4f06-4c04-b4ee-61e7b6238b16",
       "name": "Archive Job Deal-Site Associations",
@@ -2541,22 +1846,7 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Deal→Site links before re-linking from Simpro."
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Job Deal in HubSpot').first().json.dealId },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1056,
-        4448
-      ],
-      "id": "d09712bf-8781-47c7-8a51-d70f54fd3110",
-      "name": "Build Archive Job Deal-Site Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Deal→Site link."
+      "notes": "Unlinks only the site Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
@@ -2580,24 +1870,24 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Lists companys currently linked to the job Deal."
+      "notes": "Lists the company links the HubSpot record has now. Compared after the upsert."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.hubapi.com/crm/2026-09/associations/deals/companies/batch/archive",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/companies/batch/archive",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1248,
-        4848
+        1696,
+        4768
       ],
       "id": "1637cd94-6714-4c98-8575-13df0df11550",
       "name": "Archive Job Deal-Company Associations",
@@ -2608,28 +1898,13 @@
           "name": "SPL Account"
         }
       },
-      "notes": "Removes all existing Deal→Company links before re-linking from Simpro."
+      "notes": "Unlinks only the company Simpro no longer has (one batch call). Linked ones are left alone."
     },
     {
       "parameters": {
-        "jsCode": "return [{ json: {\n  inputs: ($input.first().json.results ?? []).map(r => ({\n    from: { id: $('Upsert Job Deal in HubSpot').first().json.dealId },\n    to: [{ id: r.toObjectId }]\n  }))\n} }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1024,
-        4848
-      ],
-      "id": "a6898501-f78e-46e3-a6a9-acab4432e0f6",
-      "name": "Build Archive Job Deal-Company Payload",
-      "notesInFlow": true,
-      "notes": "Builds the batch/archive body for every existing Deal→Company link."
-    },
-    {
-      "parameters": {
-        "content": "## 🏗 Site event\nUpsert Site → reset + relink Primary Contact, and reset + relink every Customer (fan-out at **Split Out Site Customers**, looped one at a time).",
+        "content": "## 🏗 Site event\nUpsert Site → compare links with Simpro: keep matches, remove stale, add missing for the Primary Contact and for every Customer (upserted one at a time in **Loop Over Site Customers**).",
         "height": 920,
-        "width": 1900,
+        "width": 2900,
         "color": 7
       },
       "id": "8935a0eb-b4e9-458b-b6de-26b82b8b5a35",
@@ -2643,9 +1918,9 @@
     },
     {
       "parameters": {
-        "content": "## 🏢 Company customer event\nUpsert Company → reset + relink every Contact and every Site (two fan-outs, each looped).",
+        "content": "## 🏢 Company customer event\nUpsert Company → compare links with Simpro: keep matches, remove stale, add missing for every Contact and every Site (two loops).",
         "height": 1420,
-        "width": 1900,
+        "width": 2900,
         "color": 6
       },
       "id": "1fd3fb2d-f870-4498-b431-d0ccdc2c78ac",
@@ -2659,9 +1934,9 @@
     },
     {
       "parameters": {
-        "content": "## 👤 Contact event\nUpsert Contact → reset + relink every Customer (Company) and every Site (two fan-outs, each looped).",
+        "content": "## 👤 Contact event\nUpsert Contact → compare links with Simpro: keep matches, remove stale, add missing for every Customer (Company) and every Site (two loops).",
         "height": 1340,
-        "width": 1900,
+        "width": 2900,
         "color": 4
       },
       "id": "beaf2de4-43d8-413e-b040-870bfe523f54",
@@ -2675,9 +1950,9 @@
     },
     {
       "parameters": {
-        "content": "## 📄 Quote event\nUpsert Quote Deal → reset + relink the Deal to its Site, Contact and Company (three parallel branches, no loops).",
+        "content": "## 📄 Quote event\nUpsert Quote Deal → compare links with Simpro: keep matches, remove stale, add missing for its Site, Contact and Company (three parallel branches, no loops).",
         "height": 600,
-        "width": 1900,
+        "width": 2900,
         "color": 2
       },
       "id": "e05651cc-ed6a-425d-9091-6f98f2b8ba86",
@@ -2691,9 +1966,9 @@
     },
     {
       "parameters": {
-        "content": "## 🔧 Job event\nUpsert Job Deal → reset + relink the Deal to its Site, Contact and Company (three parallel branches, no loops).",
+        "content": "## 🔧 Job event\nUpsert Job Deal → compare links with Simpro: keep matches, remove stale, add missing for its Site, Contact and Company (three parallel branches, no loops).",
         "height": 620,
-        "width": 1900
+        "width": 2900
       },
       "id": "bc0f5b74-2ac3-4ef5-b50b-de406c412154",
       "name": "Band - Job",
@@ -2729,6 +2004,1622 @@
       ],
       "id": "b4d31d65-ae1d-4fac-83ae-afd4c2321520",
       "name": "Merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8dbb4770-6768-4a81-a03e-969b1a2b097b",
+              "leftValue": "={{ String(($('Get Simpro Site').first().json.Customers ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Simpro Site Has Customers",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        592
+      ],
+      "notesInFlow": true,
+      "notes": "True → upsert each company first. False → Simpro has none, so every current HubSpot link is stale.",
+      "id": "67e50f5c-2d7d-41f2-9102-1a04c8994e18"
+    },
+    {
+      "parameters": {
+        "jsCode": "return ($('Get Simpro Site').first().json.Customers ?? []).map(c => ({ json: c }));"
+      },
+      "name": "List Simpro Site Customers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        496
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per company on the Simpro site.",
+      "id": "b109c79a-672e-4a8b-8c81-843d44be4948"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Site in HubSpot').first().json.id);\nconst current = new Set(($('Get Site-Company Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set((($('Get Simpro Site').first().json.Customers ?? []).length ? $input.all().map(i => i.json.id) : [])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Site-Company Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        592
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot companies links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "8f70adf0-1c24-4e95-8a62-db7b959b0d7a"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "33619bf9-bd6f-4755-bd86-6b5aa3b261c7",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7c61bf24-f164-4e48-a60d-2bffc896e776",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Site-Company Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1952,
+        592
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink companies that Simpro no longer has. Add → link companies that are missing. Nothing to change = no items = branch ends here.",
+      "id": "34fea8dd-cd84-4d36-b0c5-22833fece49b"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/0-420/companies/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Site-Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2176,
+        672
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the companies that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "f6d8585e-f98d-4cae-8d1b-9fe96ac9b7e9"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3b1a3c1e-6bd8-41b1-973c-1232a16afd6e",
+              "leftValue": "={{ String(($('Get Simpro Customer').first().json.Contacts ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Simpro Company Has Contacts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        1344
+      ],
+      "notesInFlow": true,
+      "notes": "True → upsert each contact first. False → Simpro has none, so every current HubSpot link is stale.",
+      "id": "b2fc3809-d7c1-48ab-875a-529bc3decfc2"
+    },
+    {
+      "parameters": {
+        "jsCode": "return ($('Get Simpro Customer').first().json.Contacts ?? []).map(c => ({ json: c }));"
+      },
+      "name": "List Simpro Company Contacts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        1248
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per contact on the Simpro company.",
+      "id": "d64124a0-e24a-4fdb-ba72-ee8456e11d42"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Company in HubSpot').first().json.id);\nconst current = new Set(($('Get Company-Contact Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set((($('Get Simpro Customer').first().json.Contacts ?? []).length ? $input.all().map(i => i.json.id) : [])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Company-Contact Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        1344
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot contacts links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "9ab609f8-a098-4534-9a88-fcc6dc87fe76"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c9c5bba8-d440-41ad-8ec2-de0c936f97c1",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "66be49a2-5a92-4b5c-85ca-46a36f8f8c98",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Company-Contact Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1952,
+        1344
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink contacts that Simpro no longer has. Add → link contacts that are missing. Nothing to change = no items = branch ends here.",
+      "id": "5b6a8513-7187-4b0f-8f7b-50a0488e5682"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/companies/contacts/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Company-Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2176,
+        1424
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the contacts that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "82583ec1-aa3a-4025-8e50-2ffa1427e9b6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a3e278df-d42f-45ec-b45f-21eb9729e3c5",
+              "leftValue": "={{ String(($('Get Simpro Customer').first().json.Sites ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Simpro Company Has Sites",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        1824
+      ],
+      "notesInFlow": true,
+      "notes": "True → upsert each site first. False → Simpro has none, so every current HubSpot link is stale.",
+      "id": "625fb31f-54b5-40d3-b456-c8e33fe49667"
+    },
+    {
+      "parameters": {
+        "jsCode": "return ($('Get Simpro Customer').first().json.Sites ?? []).map(c => ({ json: c }));"
+      },
+      "name": "List Simpro Company Sites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        1728
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per site on the Simpro company.",
+      "id": "01cc47cc-24e7-41e7-9ce3-11e0ffec8318"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Company in HubSpot').first().json.id);\nconst current = new Set(($('Get Company-Site Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set((($('Get Simpro Customer').first().json.Sites ?? []).length ? $input.all().map(i => i.json.id) : [])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Company-Site Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        1824
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot sites links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "f81304c5-d687-4f03-b172-3ec724b71136"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0bf196e1-79e9-46b5-bda3-446ce4df8878",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "56822b24-9e7a-4c52-9453-d506467506f8",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Company-Site Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1952,
+        1824
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink sites that Simpro no longer has. Add → link sites that are missing. Nothing to change = no items = branch ends here.",
+      "id": "896524fe-731e-4406-a20b-a8caad6e6bdf"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/companies/0-420/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Company-Site Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2176,
+        1904
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the sites that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "6b75e45c-82ce-4057-82fb-6fe38c08ffeb"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "65cf0d44-99d0-4e2d-823e-8b74a253996a",
+              "leftValue": "={{ String(($('Get Simpro Contact').first().json.Customers ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Simpro Contact Has Customers",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        2736
+      ],
+      "notesInFlow": true,
+      "notes": "True → upsert each company first. False → Simpro has none, so every current HubSpot link is stale.",
+      "id": "0ad30673-8580-43aa-b0f2-1181f3655cbf"
+    },
+    {
+      "parameters": {
+        "jsCode": "return ($('Get Simpro Contact').first().json.Customers ?? []).map(c => ({ json: c }));"
+      },
+      "name": "List Simpro Contact Customers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        2640
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per company on the Simpro contact.",
+      "id": "2c0c79ab-ad6e-43ac-bb0d-8fd73c2a8885"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Contact in HubSpot').first().json.id);\nconst current = new Set(($('Get Contact-Company Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set((($('Get Simpro Contact').first().json.Customers ?? []).length ? $input.all().map(i => i.json.id) : [])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Contact-Company Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        2736
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot companies links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "09446733-55fd-44b9-acd3-1993cdd03c3e"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7bf96844-f879-4177-8c73-7b8e72d68e25",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7acaf7f2-1d40-4f80-a430-57149d0a3611",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Contact-Company Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1952,
+        2736
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink companies that Simpro no longer has. Add → link companies that are missing. Nothing to change = no items = branch ends here.",
+      "id": "c94abb2e-6c22-41ff-b8fb-78532f2b7e32"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/contacts/companies/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Contact-Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2176,
+        2816
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the companies that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "057d4141-35d1-4cd1-a384-670693084728"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "93904eed-18cd-49ec-b47e-63aa505e3062",
+              "leftValue": "={{ String(($('Get Simpro Contact').first().json.Sites ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Simpro Contact Has Sites",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        3200
+      ],
+      "notesInFlow": true,
+      "notes": "True → upsert each site first. False → Simpro has none, so every current HubSpot link is stale.",
+      "id": "d8cf94f0-830f-433a-987e-4f5f356794b9"
+    },
+    {
+      "parameters": {
+        "jsCode": "return ($('Get Simpro Contact').first().json.Sites ?? []).map(c => ({ json: c }));"
+      },
+      "name": "List Simpro Contact Sites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        3104
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per site on the Simpro contact.",
+      "id": "2e4d0444-e0d0-458e-af5d-c5948e937e3b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Contact in HubSpot').first().json.id);\nconst current = new Set(($('Get Contact-Site Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set((($('Get Simpro Contact').first().json.Sites ?? []).length ? $input.all().map(i => i.json.id) : [])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Contact-Site Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        3200
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot sites links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "5b11b1cc-d190-4d0e-a69a-c6d5f64e4a38"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4525387a-66cc-41a7-8432-2169e803dcd3",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "29f01835-daaf-497f-8e0c-dda00d3252e1",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Contact-Site Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1952,
+        3200
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink sites that Simpro no longer has. Add → link sites that are missing. Nothing to change = no items = branch ends here.",
+      "id": "8b43b705-b409-427e-a045-93ebe421b525"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/contacts/0-420/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Contact-Site Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2176,
+        3280
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the sites that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "217f88cb-6450-4412-8b79-1d1adc3d17b6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Site in HubSpot').first().json.id);\nconst current = new Set(($('Get Site-Contact Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Site-Contact Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot primary contact links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "15af0fe9-05ef-4b7e-9712-030033fd86ad"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "80c3206a-c3c2-471a-8a96-60257c4d4542",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8655fe24-763f-4e5a-a4aa-28a6400757cc",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Site-Contact Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1280,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink primary contact that Simpro no longer has. Add → link primary contact that are missing. Nothing to change = no items = branch ends here.",
+      "id": "6a7801b8-1bf1-4ee4-b095-f01866663b6a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/0-420/contacts/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Site-Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1504,
+        160
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the primary contact that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "4dfe096a-1b5e-4cfd-980d-ea093fc236d0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Quote Deal in HubSpot').first().json.dealId);\nconst current = new Set(($('Get Quote Deal-Site Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Quote Deal-Site Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        3792
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot site links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "f08b12fe-5252-4072-befb-520c129f0e16"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "870e1bf0-83bd-4d3f-b663-8c887f7c67b8",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b1315a55-22c7-4240-9ef7-1992b8725439",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Quote Deal-Site Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1536,
+        3792
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink site that Simpro no longer has. Add → link site that are missing. Nothing to change = no items = branch ends here.",
+      "id": "cd5b3cd5-d2a6-45c9-a38a-5be0a8b3bf2d"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/0-420/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Quote Deal-Site Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1760,
+        3872
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the site that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "43deab14-21cd-4e69-952a-18cec67cd58a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Quote Deal in HubSpot').first().json.dealId);\nconst current = new Set(($('Get Quote Deal-Contact Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Quote Deal-Contact Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        3984
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot contact links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "f1e11632-1404-403e-8086-5c40cb5ab2dc"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4561252d-6a5a-43b9-926d-fc3e6dbad8b7",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "65fa331c-deb7-4696-8074-b7ae0d4abcd6",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Quote Deal-Contact Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1536,
+        3984
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink contact that Simpro no longer has. Add → link contact that are missing. Nothing to change = no items = branch ends here.",
+      "id": "f29b1243-2d73-47c0-8b6f-6aa85f749af7"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Quote Deal-Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1760,
+        4064
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the contact that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "7f63391a-437e-4ca2-b257-363c772d0f9a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Quote Deal in HubSpot').first().json.dealId);\nconst current = new Set(($('Get Quote Deal-Company Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Quote Deal-Company Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        4176
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot company links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "0aa1208d-874b-4665-b7cb-b37b65d39f2b"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "603d8a79-8037-4120-88ce-da37313b6fd9",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c6fcab26-7355-48a4-9fcb-1c2ab3b673f8",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Quote Deal-Company Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1504,
+        4176
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink company that Simpro no longer has. Add → link company that are missing. Nothing to change = no items = branch ends here.",
+      "id": "3745a258-b355-4212-9e6f-8713e96031f2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/companies/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Quote Deal-Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1728,
+        4256
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the company that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "d5fa68d1-8a79-4ffe-a575-da13ffdeb06e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Job Deal in HubSpot').first().json.dealId);\nconst current = new Set(($('Get Job Deal-Site Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Job Deal-Site Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        4448
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot site links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "1c997636-2386-4478-b289-5858ce0259bc"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e875d296-385c-4fbe-a27e-8519cac47184",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9d024b0b-f522-446e-a5d5-d87f50b636cc",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Job Deal-Site Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1504,
+        4448
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink site that Simpro no longer has. Add → link site that are missing. Nothing to change = no items = branch ends here.",
+      "id": "461a7b82-46e5-4a94-8495-54588d259713"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/0-420/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Job Deal-Site Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1728,
+        4528
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the site that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "1262c3e5-e792-483f-b0ad-ab64cc0af89e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Job Deal in HubSpot').first().json.dealId);\nconst current = new Set(($('Get Job Deal-Contact Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Job Deal-Contact Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        4640
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot contact links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "514b37ba-4d94-4612-9911-52704f2f85c4"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9505bab2-6b90-4241-bbcc-f8d4b56ba8b0",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e99e00b2-9fd1-4531-9baa-1bd6aa0bb73a",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Job Deal-Contact Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1504,
+        4640
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink contact that Simpro no longer has. Add → link contact that are missing. Nothing to change = no items = branch ends here.",
+      "id": "e50ae35b-2fff-4ab7-ae24-d1a1d620575a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Job Deal-Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1728,
+        4720
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the contact that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "da615d75-c564-4f92-86cf-5b741b9e4ebf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare what HubSpot links now with what Simpro says it should link.\n// Links that match are left alone; stale ones are removed; missing ones are added.\nconst fromId = String($('Upsert Job Deal in HubSpot').first().json.dealId);\nconst current = new Set(($('Get Job Deal-Company Associations').first().json.results ?? []).map(r => String(r.toObjectId)));\nconst desired = new Set(([$input.first().json.id])\n  .filter(v => v !== undefined && v !== null && v !== '')\n  .map(String));\n\nconst remove = [...current].filter(id => !desired.has(id));\nconst add = [...desired].filter(id => !current.has(id));\n\nconst out = [];\nif (remove.length) out.push({ json: { action: 'remove', ids: remove,\n  body: { inputs: [{ from: { id: fromId }, to: remove.map(id => ({ id })) }] } } });\nif (add.length) out.push({ json: { action: 'add', ids: add,\n  body: { inputs: add.map(id => ({ from: { id: fromId }, to: { id } })) } } });\nreturn out; // empty = already in sync, nothing to do"
+      },
+      "name": "Plan Job Deal-Company Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        4848
+      ],
+      "notesInFlow": true,
+      "notes": "Diffs current HubSpot company links against Simpro. Outputs a remove item and/or an add item; none when already in sync.",
+      "id": "f2cb45e9-f78e-4721-9b1c-8ba4999642d8"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a224d0ac-37b4-49f4-8859-f54158442fac",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6f6b57bb-c916-490e-bf23-7964161c28ce",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Add"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Job Deal-Company Changes",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        4848
+      ],
+      "notesInFlow": true,
+      "notes": "Remove → unlink company that Simpro no longer has. Add → link company that are missing. Nothing to change = no items = branch ends here.",
+      "id": "e92d09e8-08ef-4cb5-b9d0-eaa4fef4b6c2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v4/associations/deals/companies/batch/associate/default",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Create Missing Job Deal-Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1696,
+        4928
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Links only the company that are missing (one batch call, default association type).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "762000c6-1b1a-4b50-9b49-e2c75fccf7a8"
     }
   ],
   "pinData": {
@@ -2860,44 +3751,6 @@
             "node": "Upsert Site in HubSpot",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Split Out Site Customers",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Site-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Site-Contact Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Site-Contact Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Site-Contact Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Site-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Site Primary Contact",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -2914,122 +3767,6 @@
             "node": "Get Site-Company Associations",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Pair Site with Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Site Primary Contact": {
-      "main": [
-        [
-          {
-            "node": "Associate Site with Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Site-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Site-Company Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Site-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Wait for Site-Company Archive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Site-Company Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Site-Company Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Site Customer": {
-      "main": [
-        [
-          {
-            "node": "Pair Site with Company",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Split Out Site Customers": {
-      "main": [
-        [
-          {
-            "node": "Wait for Site-Company Archive",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait for Site-Company Archive": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Site Customers",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Site Customers": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Upsert Site Customer",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Associate Site with Company": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Site Customers",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pair Site with Company": {
-      "main": [
-        [
-          {
-            "node": "Associate Site with Company",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -3039,38 +3776,6 @@
         [
           {
             "node": "Upsert Company in HubSpot",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Split Out Company Contacts",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Split Out Company Sites",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Company-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Company-Contact Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Company-Contact Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Company-Contact Associations",
             "type": "main",
             "index": 0
           }
@@ -3086,195 +3791,7 @@
             "index": 0
           },
           {
-            "node": "Pair Company with Contact",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Get Company-Site Associations",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Pair Company with Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Company Contact": {
-      "main": [
-        [
-          {
-            "node": "Pair Company with Contact",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Associate Company with Contact": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Company Contacts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Out Company Contacts": {
-      "main": [
-        [
-          {
-            "node": "Wait for Company-Contact Archive",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait for Company-Contact Archive": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Company Contacts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Company Contacts": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Upsert Company Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pair Company with Contact": {
-      "main": [
-        [
-          {
-            "node": "Associate Company with Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Company-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Wait for Company-Contact Archive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Company-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Company-Site Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Company-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Wait for Company-Site Archive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Company-Site Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Company-Site Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Company Site": {
-      "main": [
-        [
-          {
-            "node": "Pair Company with Site",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Associate Company with Site": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Company Sites",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Out Company Sites": {
-      "main": [
-        [
-          {
-            "node": "Wait for Company-Site Archive",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait for Company-Site Archive": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Company Sites",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Company Sites": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Upsert Company Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pair Company with Site": {
-      "main": [
-        [
-          {
-            "node": "Associate Company with Site",
             "type": "main",
             "index": 0
           }
@@ -3286,49 +3803,6 @@
         [
           {
             "node": "Upsert Contact in HubSpot",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Split Out Contact Companies",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Split Out Contact Sites",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Contact-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Contact-Company Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Contact-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Wait for Contact-Company Archive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Contact-Company Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Contact-Company Associations",
             "type": "main",
             "index": 0
           }
@@ -3344,184 +3818,7 @@
             "index": 0
           },
           {
-            "node": "Pair Contact with Company",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Get Contact-Site Associations",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Pair Contact with Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Contact Company": {
-      "main": [
-        [
-          {
-            "node": "Pair Contact with Company",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Associate Contact with Company": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Contact Companies",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Out Contact Companies": {
-      "main": [
-        [
-          {
-            "node": "Wait for Contact-Company Archive",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait for Contact-Company Archive": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Contact Companies",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Contact Companies": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Upsert Contact Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pair Contact with Company": {
-      "main": [
-        [
-          {
-            "node": "Associate Contact with Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Contact-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Contact-Site Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Contact-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Wait for Contact-Site Archive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Contact-Site Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Contact-Site Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Contact Site": {
-      "main": [
-        [
-          {
-            "node": "Pair Contact with Site",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Associate Contact with Site": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Contact Sites",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Out Contact Sites": {
-      "main": [
-        [
-          {
-            "node": "Wait for Contact-Site Archive",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait for Contact-Site Archive": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Contact Sites",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Contact Sites": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Upsert Contact Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pair Contact with Site": {
-      "main": [
-        [
-          {
-            "node": "Associate Contact with Site",
             "type": "main",
             "index": 0
           }
@@ -3604,138 +3901,6 @@
         ]
       ]
     },
-    "Upsert Quote Site": {
-      "main": [
-        [
-          {
-            "node": "Associate Quote Deal with Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Quote Contact": {
-      "main": [
-        [
-          {
-            "node": "Associate Quote Deal with Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Quote Company": {
-      "main": [
-        [
-          {
-            "node": "Associate Quote Deal with Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Quote Deal-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Quote Deal-Contact Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Quote Deal-Contact Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Quote Deal-Contact Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Quote Deal-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Quote Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Quote Deal-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Quote Deal-Site Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Quote Deal-Site Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Quote Deal-Site Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Quote Deal-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Quote Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Quote Deal-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Quote Deal-Company Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Quote Deal-Company Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Quote Deal-Company Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Quote Deal-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Quote Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Log Job Event": {
       "main": [
         [
@@ -3779,138 +3944,6 @@
         ]
       ]
     },
-    "Upsert Job Site": {
-      "main": [
-        [
-          {
-            "node": "Associate Job Deal with Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Job Contact": {
-      "main": [
-        [
-          {
-            "node": "Associate Job Deal with Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Job Company": {
-      "main": [
-        [
-          {
-            "node": "Associate Job Deal with Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Job Deal-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Job Deal-Contact Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Job Deal-Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Job Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Job Deal-Contact Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Job Deal-Contact Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Job Deal-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Job Deal-Site Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Job Deal-Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Job Site",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Job Deal-Site Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Job Deal-Site Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Job Deal-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Build Archive Job Deal-Company Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Archive Job Deal-Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Upsert Job Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Archive Job Deal-Company Payload": {
-      "main": [
-        [
-          {
-            "node": "Archive Job Deal-Company Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Receive Record": {
       "main": [
         [
@@ -3927,6 +3960,853 @@
         [
           {
             "node": "Route by Simpro Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Site-Company Associations": {
+      "main": [
+        [
+          {
+            "node": "Simpro Site Has Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpro Site Has Customers": {
+      "main": [
+        [
+          {
+            "node": "List Simpro Site Customers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Site-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Simpro Site Customers": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Site Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Site Customers": {
+      "main": [
+        [
+          {
+            "node": "Plan Site-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Site Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Site Customer": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Site Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Site-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Site-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Site-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Site-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Site-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Company-Contact Associations": {
+      "main": [
+        [
+          {
+            "node": "Simpro Company Has Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpro Company Has Contacts": {
+      "main": [
+        [
+          {
+            "node": "List Simpro Company Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Company-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Simpro Company Contacts": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Company Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Company Contacts": {
+      "main": [
+        [
+          {
+            "node": "Plan Company-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Company Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Company Contact": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Company Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Company-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Company-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Company-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Company-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Company-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Company-Site Associations": {
+      "main": [
+        [
+          {
+            "node": "Simpro Company Has Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpro Company Has Sites": {
+      "main": [
+        [
+          {
+            "node": "List Simpro Company Sites",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Company-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Simpro Company Sites": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Company Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Company Sites": {
+      "main": [
+        [
+          {
+            "node": "Plan Company-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Company Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Company Site": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Company Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Company-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Company-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Company-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Company-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Company-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Contact-Company Associations": {
+      "main": [
+        [
+          {
+            "node": "Simpro Contact Has Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpro Contact Has Customers": {
+      "main": [
+        [
+          {
+            "node": "List Simpro Contact Customers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Contact-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Simpro Contact Customers": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Contact Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Contact Companies": {
+      "main": [
+        [
+          {
+            "node": "Plan Contact-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Contact Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Contact Company": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Contact Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Contact-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Contact-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Contact-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Contact-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Contact-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Contact-Site Associations": {
+      "main": [
+        [
+          {
+            "node": "Simpro Contact Has Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpro Contact Has Sites": {
+      "main": [
+        [
+          {
+            "node": "List Simpro Contact Sites",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Contact-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Simpro Contact Sites": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Contact Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Contact Sites": {
+      "main": [
+        [
+          {
+            "node": "Plan Contact-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Contact Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Contact Site": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Contact Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Contact-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Contact-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Contact-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Contact-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Contact-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Site-Contact Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Site Primary Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Site-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Site-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Site-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Site-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Site-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Site Primary Contact": {
+      "main": [
+        [
+          {
+            "node": "Plan Site-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quote Deal-Site Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Quote Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Quote Deal-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Quote Deal-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Quote Deal-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Quote Deal-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Quote Deal-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Quote Site": {
+      "main": [
+        [
+          {
+            "node": "Plan Quote Deal-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quote Deal-Contact Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Quote Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Quote Deal-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Quote Deal-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Quote Deal-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Quote Deal-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Quote Deal-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Quote Contact": {
+      "main": [
+        [
+          {
+            "node": "Plan Quote Deal-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quote Deal-Company Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Quote Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Quote Deal-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Quote Deal-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Quote Deal-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Quote Deal-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Quote Deal-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Quote Company": {
+      "main": [
+        [
+          {
+            "node": "Plan Quote Deal-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Deal-Site Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Job Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Job Deal-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Job Deal-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Job Deal-Site Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Job Deal-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Job Deal-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Job Site": {
+      "main": [
+        [
+          {
+            "node": "Plan Job Deal-Site Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Deal-Contact Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Job Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Job Deal-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Job Deal-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Job Deal-Contact Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Job Deal-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Job Deal-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Job Contact": {
+      "main": [
+        [
+          {
+            "node": "Plan Job Deal-Contact Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Deal-Company Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Job Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Job Deal-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Route Job Deal-Company Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Job Deal-Company Changes": {
+      "main": [
+        [
+          {
+            "node": "Archive Job Deal-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Job Deal-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Job Company": {
+      "main": [
+        [
+          {
+            "node": "Plan Job Deal-Company Changes",
             "type": "main",
             "index": 0
           }
