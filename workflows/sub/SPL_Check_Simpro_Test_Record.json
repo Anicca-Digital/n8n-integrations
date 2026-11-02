@@ -27,6 +27,12 @@
               "type": "string"
             },
             {
+              "id": "857cc03f-1d4b-4fe9-9f92-f53c0e302d5f",
+              "name": "contactEmailDomains",
+              "value": "aniccadigital.io,spl.com,spl.com.au",
+              "type": "string"
+            },
+            {
               "id": "3d5dd911-8a34-44ba-b45c-f62cb1c8a475",
               "name": "simproBaseUrl",
               "value": "https://spl.simprosuite.com/api/v1.0",
@@ -46,7 +52,7 @@
         0
       ],
       "notesInFlow": true,
-      "notes": "EDIT HERE: the name prefix a record must start with to be synced (case-sensitive), and the Simpro API base URL."
+      "notes": "EDIT HERE: namePrefix = what a Site / Company customer / Quote / Job name must start with (case-sensitive). contactEmailDomains = comma-separated email domains that make a Contact a test record. Simpro API base URL."
     },
     {
       "parameters": {
@@ -141,7 +147,7 @@
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={{ (() => {\n  const rec = $('Get Simpro Record').first().json;\n  const prefix = $('Workflow Config').first().json.namePrefix;\n  // Site / Quote / Job use Name, company customers use CompanyName, contacts use GivenName + FamilyName.\n  const recordName = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();\n  return { ...$('When Executed by Another Workflow').first().json, recordName, isTestRecord: recordName.startsWith(prefix) };\n})() }}",
+        "jsonOutput": "={{ (() => {\n  const rec = $('Get Simpro Record').first().json;\n  const cfg = $('Workflow Config').first().json;\n  const event = $('When Executed by Another Workflow').first().json;\n  // Site / Quote / Job use Name, company customers use CompanyName, contacts use GivenName + FamilyName.\n  const recordName = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();\n  if (event.body?.name === 'Contact') {\n    // Contacts: test record = email domain is one of contactEmailDomains (exact match, not case-sensitive).\n    const email = String(rec.Email ?? '').trim().toLowerCase();\n    const domain = email.includes('@') ? email.split('@').pop() : '';\n    const domains = String(cfg.contactEmailDomains).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\n    return { ...event, recordName, email, isTestRecord: domains.includes(domain) };\n  }\n  return { ...event, recordName, isTestRecord: recordName.startsWith(cfg.namePrefix) };\n})() }}",
         "options": {}
       },
       "id": "db9c9d47-c018-4e6c-a0b3-bb7f68a33905",
@@ -153,7 +159,7 @@
         -96
       ],
       "notesInFlow": true,
-      "notes": "Output to the router: the original event plus recordName and isTestRecord (true when the name starts with namePrefix)."
+      "notes": "Output to the router: the original event plus recordName and isTestRecord. Contacts: true when the email domain is in contactEmailDomains. Everything else: true when the name starts with namePrefix."
     },
     {
       "parameters": {

@@ -3687,7 +3687,7 @@
         2592
       ],
       "notesInFlow": true,
-      "notes": "True → name starts with 'HS TEST - ', sync it. False → skip (nothing is written to HubSpot)."
+      "notes": "True → test record (name starts with 'HS TEST - ', or for a Contact an aniccadigital.io / spl.com / spl.com.au email), sync it. False → skip."
     },
     {
       "parameters": {},
@@ -3700,7 +3700,7 @@
         2816
       ],
       "notesInFlow": true,
-      "notes": "The record name does not start with 'HS TEST - '. Ends here on purpose."
+      "notes": "Not a test record (wrong name prefix, or a Contact with a non-test email domain). Ends here on purpose."
     }
   ],
   "pinData": {
