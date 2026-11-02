@@ -1,0 +1,1823 @@
+{
+  "name": "[SPL] HubSpot-> Simpro (Real Time)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "simpro-upsert",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        832
+      ],
+      "id": "a0980512-dc23-47f0-8a4c-ee78d8c9cd03",
+      "name": "Webhook",
+      "webhookId": "615a2a28-0603-4d40-9953-ca1f1f7b94ce"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "84e3b1b9-e929-47d6-9cf6-5270019dd9ed",
+              "name": "hubspotApiUrl",
+              "value": "https://api.hubapi.com/crm/objects/2026-09",
+              "type": "string"
+            },
+            {
+              "id": "cdc66786-859a-4c8f-878c-335b112c6c2a",
+              "name": "simproBaseUrl",
+              "value": "https://spl.simprosuite.com/api/v1.0/companies/0",
+              "type": "string"
+            },
+            {
+              "id": "35b65d0c-320f-4df1-b0ed-3b2254cce940",
+              "name": "quotePipelineId",
+              "value": "default",
+              "type": "string"
+            },
+            {
+              "id": "b5cc94b6-7de6-4b3f-a208-a5b825103a5e",
+              "name": "jobPipelineId",
+              "value": "2172954069",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "40122c9a-98e4-49e4-a8b2-e7f00776314c",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -496,
+        768
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: HubSpot objects URL (2026-09), Simpro base URL (company 0 is hardcoded), and the HubSpot Quote and Job pipeline IDs."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body[0].objectTypeId }}",
+                    "rightValue": "0-420",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "400d0e6b-56ac-4384-bc67-4c5363f64fbe"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Site"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e5175e84-9864-4f3d-8905-5c34bae48ffc",
+                    "leftValue": "={{ $json.body[0].subscriptionType }}",
+                    "rightValue": "company",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Company"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "52b11787-01e9-43e6-b572-78e2b8d4a455",
+                    "leftValue": "={{ $json.body[0].subscriptionType }}",
+                    "rightValue": "contact",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Contact"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3159dbf1-ff2a-42c2-b02c-278e232fbbd7",
+                    "leftValue": "={{ $json.body[0].subscriptionType }}",
+                    "rightValue": "deal",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Deal"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -256,
+        768
+      ],
+      "id": "730f67f6-ec02-48a4-b320-73f4927cfd85",
+      "name": "Route by HubSpot Event",
+      "notesInFlow": true,
+      "notes": "Routes on body[0].objectTypeId (0-420 = Site) then subscriptionType (company / contact / deal). Any other event is dropped silently (fallback output is not wired)."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+            },
+            {
+              "key": "Type",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+            }
+          ]
+        }
+      },
+      "id": "d0281e6d-a96a-427f-9351-85b43b436564",
+      "name": "Log Site Event",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        304,
+        432
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot site ID + event type to execution data so runs are searchable."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLbAFegpAnPoAntv",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/nLbAFegpAnPoAntv",
+          "cachedResultName": "[SPL] Upsert Site in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_site_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId.toString() }}"
+          },
+          "matchingColumns": [
+            "hubspot_site_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_site_id",
+              "displayName": "hubspot_site_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        432
+      ],
+      "id": "b57a0b57-fe3c-480b-8820-381f8ec38e09",
+      "name": "Upsert Site in Simpro",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: creates/updates the Simpro Site from this HubSpot Site (0-420). Returns { simpro_id }."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "b8475c05-7411-4e79-9d91-947a4349b071",
+      "name": "Get Site-Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        256
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists contacts linked to this HubSpot Site."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7MuXr1nwifPf66II",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/7MuXr1nwifPf66II",
+          "cachedResultName": "[SPL] Upsert Contact in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_contact_id": "={{ $json.results[0].toObjectId }}"
+          },
+          "matchingColumns": [
+            "hubspot_contact_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_contact_id",
+              "displayName": "hubspot_contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        256
+      ],
+      "id": "16253492-ac33-4588-8f75-258ea3dd1432",
+      "name": "Upsert Site Primary Contact",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: upserts the first associated contact in Simpro. Returns { simpro_id }. Fails if the site has no associated contact."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproBaseUrl }}/sites/{{ $('Upsert Site in Simpro').first().json.simpro_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ PrimaryContact: { Contact: Number($('Upsert Site Primary Contact').first().json.simpro_id) } }) }}",
+        "options": {}
+      },
+      "id": "93942112-0853-4c70-9653-4ff4a4b96097",
+      "name": "Update Site Primary Contact in Simpro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1152,
+        256
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Sets the Simpro Site primary contact. Uses the ID the contact sub-workflow already returned (the old extra GET Contact call was redundant)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/companies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "5f908dca-e83f-4505-a514-9bf56ffce2e3",
+      "name": "Get Site-Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        560
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists companies linked to this HubSpot Site."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "id": "5f8705c9-9eca-4589-8886-8a4582a85af9",
+      "name": "Split Out Site Customers",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        928,
+        560
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per associated company."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "8577f442-8a14-46ec-a49f-025ae4983740",
+      "name": "Loop Over Site Customers",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1152,
+        560
+      ],
+      "notesInFlow": true,
+      "notes": "Processes site customers one at a time (batch 1). Output 0 = done (all results), output 1 = next customer."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "rjRxp1RRbXkKoPkk",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/rjRxp1RRbXkKoPkk",
+          "cachedResultName": "[SPL] Upsert Company in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_comapny_id": "={{ $json.toObjectId }}"
+          },
+          "matchingColumns": [
+            "hubspot_comapny_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_comapny_id",
+              "displayName": "hubspot_comapny_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1360,
+        672
+      ],
+      "id": "2fef6df0-5292-4d4a-af95-aaff63aae093",
+      "name": "Upsert Site Customer",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: upserts this company as a Simpro customer. Returns { simpro_id }, then back to the loop."
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "simpro_id",
+              "renameField": true,
+              "outputFieldName": "simpro_customer_ids"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0251c80c-8664-4fc6-bd13-4f99d4dd63e9",
+      "name": "Collect Site Customer IDs",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        464
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-IN: joins every returned Simpro customer ID into one list (simpro_customer_ids)."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproBaseUrl }}/sites/{{ $('Upsert Site in Simpro').first().json.simpro_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ Customers: $json.simpro_customer_ids.map(Number) }) }}",
+        "options": {}
+      },
+      "id": "8e90377f-2d3a-4d92-8cba-f3f77a204d3c",
+      "name": "Associate Site with Customers in Simpro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        464
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Links the Simpro Site to its customers by sending the full customer ID list."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+            },
+            {
+              "key": "Type",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+            }
+          ]
+        }
+      },
+      "id": "891208ed-425d-40eb-8fc7-4ee722de978e",
+      "name": "Log Company Event",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        304,
+        1104
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot company ID + event type to execution data."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "rjRxp1RRbXkKoPkk",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/rjRxp1RRbXkKoPkk",
+          "cachedResultName": "[SPL] Upsert Company in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_comapny_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+          },
+          "matchingColumns": [
+            "hubspot_comapny_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_comapny_id",
+              "displayName": "hubspot_comapny_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        1104
+      ],
+      "id": "004927a0-3a4f-40ab-8d40-21898aa2ba5f",
+      "name": "Upsert Company in Simpro",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: creates/updates the Simpro company customer. Returns { simpro_id }."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/companies/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/0-420",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "d7626dc1-e71f-4925-8430-fbd6aa31f091",
+      "name": "Get Company-Site Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        1104
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists sites linked to this HubSpot Company."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "id": "b1b8be54-431b-458d-9ca6-632d123f0394",
+      "name": "Split Out Company Sites",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        928,
+        1104
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per associated site."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "a91d6fdb-a129-40a6-8a06-74b5c35241d4",
+      "name": "Loop Over Company Sites",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1152,
+        1104
+      ],
+      "notesInFlow": true,
+      "notes": "Processes company sites one at a time (batch 1). Output 0 = done (all results), output 1 = next site."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLbAFegpAnPoAntv",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/nLbAFegpAnPoAntv",
+          "cachedResultName": "[SPL] Upsert Site in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_site_id": "={{ $json.toObjectId.toString() }}"
+          },
+          "matchingColumns": [
+            "hubspot_site_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_site_id",
+              "displayName": "hubspot_site_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1360,
+        1216
+      ],
+      "id": "c045d3b2-5643-4394-bd16-0e17b36f08df",
+      "name": "Upsert Company Site",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: upserts this site in Simpro. Returns { simpro_id }, then back to the loop."
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "simpro_id",
+              "renameField": true,
+              "outputFieldName": "simpro_site_ids"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3539f68-17b2-4103-8eb6-0b97a2d948f4",
+      "name": "Collect Company Site IDs",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        1008
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-IN: joins every returned Simpro site ID into one list (simpro_site_ids)."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproBaseUrl }}/customers/companies/{{ $('Upsert Company in Simpro').first().json.simpro_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ Sites: $json.simpro_site_ids.map(Number) }) }}",
+        "options": {}
+      },
+      "id": "a75e0212-14be-4b24-82d1-7010a68e763e",
+      "name": "Associate Company with Sites in Simpro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        1008
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Links the Simpro customer to its sites by sending the full site ID list."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+            },
+            {
+              "key": "Type",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+            }
+          ]
+        }
+      },
+      "id": "5ebcfc4b-4497-4d08-b28e-4340b0ab437f",
+      "name": "Log Contact Event",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        304,
+        1584
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot contact ID + event type to execution data."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7MuXr1nwifPf66II",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/7MuXr1nwifPf66II",
+          "cachedResultName": "[SPL] Upsert Contact in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_contact_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+          },
+          "matchingColumns": [
+            "hubspot_contact_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_contact_id",
+              "displayName": "hubspot_contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        1584
+      ],
+      "id": "eb224af7-c40b-471d-89a8-f59a0eed324e",
+      "name": "Upsert Contact in Simpro",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: creates/updates the Simpro contact. FIXED: this node pointed at workflow TeBoPEJTy4zn1HmI, now [SPL] Upsert Contact in Simpro (7MuXr1nwifPf66II) like the Site lane."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+            },
+            {
+              "key": "Type",
+              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+            }
+          ]
+        }
+      },
+      "id": "e1f49ebe-84fa-48ef-8530-17a893375f11",
+      "name": "Log Deal Event",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        304,
+        2064
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot deal ID + event type to execution data."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "79ac716e-d191-4863-b909-20716360c173",
+      "name": "Get Deal-Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        512,
+        2064
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists contacts linked to this deal."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7MuXr1nwifPf66II",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/7MuXr1nwifPf66II",
+          "cachedResultName": "[SPL] Upsert Contact in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_contact_id": "={{ $json.results[0].toObjectId }}"
+          },
+          "matchingColumns": [
+            "hubspot_contact_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_contact_id",
+              "displayName": "hubspot_contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        2064
+      ],
+      "id": "fdee79fe-c5aa-4c8c-be6a-ff3dbde0cce6",
+      "name": "Upsert Deal Contact",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: upserts the first associated contact in Simpro. Fails if the deal has none."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/companies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "42e17cf4-1353-4042-bd2e-45c7be485ad6",
+      "name": "Get Deal-Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        928,
+        2064
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists companies linked to this deal."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "rjRxp1RRbXkKoPkk",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/rjRxp1RRbXkKoPkk",
+          "cachedResultName": "[SPL] Upsert Company in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_comapny_id": "={{ $json.results[0].toObjectId }}"
+          },
+          "matchingColumns": [
+            "hubspot_comapny_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_comapny_id",
+              "displayName": "hubspot_comapny_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1152,
+        2064
+      ],
+      "id": "2e351fe7-868a-4526-893c-c6b42a72188a",
+      "name": "Upsert Deal Customer",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: upserts the first associated company as a Simpro customer. Fails if the deal has none."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/0-420",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "297ce1f6-6d3b-4ee0-9a7b-482f591d5b8e",
+      "name": "Get Deal-Site Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1360,
+        2064
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists sites linked to this deal."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLbAFegpAnPoAntv",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/nLbAFegpAnPoAntv",
+          "cachedResultName": "[SPL] Upsert Site in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_site_id": "={{ $json.results[0].toObjectId.toString() }}"
+          },
+          "matchingColumns": [
+            "hubspot_site_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_site_id",
+              "displayName": "hubspot_site_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1568,
+        2064
+      ],
+      "id": "2e6c5bb9-7cd4-4fe0-bdc1-0671ed874e0f",
+      "name": "Upsert Deal Site",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: upserts the first associated site in Simpro. Fails if the deal has none."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}?properties=pipeline",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "8650d59c-50eb-46b0-b6f3-023bc2f52c08",
+      "name": "Get HubSpot Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1776,
+        2064
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Reads the deal pipeline so the event can be routed to Quote or Job."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.properties.pipeline }}",
+                    "rightValue": "={{ $('Workflow Config').first().json.quotePipelineId }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "2e3e2b67-a75c-452c-b70d-601a5be22797"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Quote"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "27f92dd9-5307-440d-bd15-7e1a2b744da3",
+                    "leftValue": "={{ $json.properties.pipeline }}",
+                    "rightValue": "={{ $('Workflow Config').first().json.jobPipelineId }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Job"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1984,
+        2064
+      ],
+      "id": "1fed9409-4614-4457-bd3f-bf655429e759",
+      "name": "Route by Deal Pipeline",
+      "notesInFlow": true,
+      "notes": "Default pipeline → Quote. Jobs pipeline → Job. Other pipelines are dropped."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SKSFPYbl7hLeoC2M",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/SKSFPYbl7hLeoC2M",
+          "cachedResultName": "[SPL] Upsert Quote in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_deal_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId.toString() }}",
+            "simpro_contact_id": "={{ $('Upsert Deal Contact').first().json.simpro_id.toString() }}",
+            "simpro_site_id": "={{ $('Upsert Deal Site').first().json.simpro_id.toString() }}",
+            "simpro_customer_id": "={{ $('Upsert Deal Customer').first().json.simpro_id.toString() }}"
+          },
+          "matchingColumns": [
+            "hubspot_deal_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_deal_id",
+              "displayName": "hubspot_deal_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "simpro_site_id",
+              "displayName": "simpro_site_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "simpro_contact_id",
+              "displayName": "simpro_contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "simpro_customer_id",
+              "displayName": "simpro_customer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        2192,
+        1968
+      ],
+      "id": "1e2e2216-5a66-4589-9b43-d139c59affcc",
+      "name": "Upsert Quote in Simpro",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: creates/updates the Simpro Quote from this deal (Quote pipeline)."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "DSNpp89Bn0sa39Cx",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/DSNpp89Bn0sa39Cx",
+          "cachedResultName": "[SPL] Upsert Job in Simpro"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "hubspot_deal_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId.toString() }}",
+            "simpro_contact_id": "={{ $('Upsert Deal Contact').first().json.simpro_id.toString() }}",
+            "simpro_site_id": "={{ $('Upsert Deal Site').first().json.simpro_id.toString() }}",
+            "simpro_customer_id": "={{ $('Upsert Deal Customer').first().json.simpro_id.toString() }}"
+          },
+          "matchingColumns": [
+            "hubspot_deal_id"
+          ],
+          "schema": [
+            {
+              "id": "hubspot_deal_id",
+              "displayName": "hubspot_deal_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "simpro_site_id",
+              "displayName": "simpro_site_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "simpro_contact_id",
+              "displayName": "simpro_contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "simpro_customer_id",
+              "displayName": "simpro_customer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        2192,
+        2176
+      ],
+      "id": "46106898-92c1-4af4-ade7-e7b2f515257f",
+      "name": "Upsert Job in Simpro",
+      "notesInFlow": true,
+      "notes": "Sub-workflow: creates/updates the Simpro Job from this deal (Jobs pipeline)."
+    },
+    {
+      "parameters": {
+        "content": "## 🏗 Site event\nUpsert Site → set the Primary Contact, and link every associated Company as a Simpro customer (fan-out at **Split Out Site Customers**, looped one at a time).",
+        "height": 640,
+        "width": 2400,
+        "color": 7
+      },
+      "id": "130d2ef1-b9ee-4b25-9022-35944560494d",
+      "name": "Band - Site",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🏢 Company event\nUpsert Company → link every associated Site to the Simpro customer (fan-out at **Split Out Company Sites**, looped one at a time).",
+        "height": 640,
+        "width": 2400,
+        "color": 6
+      },
+      "id": "5b211ed4-1fbe-412e-ac38-a8026dee9916",
+      "name": "Band - Company",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 👤 Contact event\nUpsert Contact in Simpro. Nothing else to link in this direction.",
+        "height": 240,
+        "width": 2400,
+        "color": 4
+      },
+      "id": "af5a2027-cf1d-435a-9d24-6dbaf3dd0b61",
+      "name": "Band - Contact",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📄🔧 Deal event\nUpsert the deal's first Contact, Company and Site (in that order), then route by pipeline: Default → **Upsert Quote in Simpro**, Jobs → **Upsert Job in Simpro**.",
+        "height": 640,
+        "width": 2400,
+        "color": 2
+      },
+      "id": "8b93fe28-5ff7-453c-8677-ed5bf932e955",
+      "name": "Band - Deal",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "a01aa868-d65e-4659-872b-0dde0df116f6",
+      "name": "Receive Record",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -720,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "Called once per changed record by [SPL] HubSpot -> Simpro (Scheduled Updates). Input data mode must read 'Accept all data'. Item shape matches the HubSpot webhook: { body: [ { objectId, objectTypeId, subscriptionType } ] }."
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "spls.app.n8n.cloud",
+            "user-agent": "HubSpot Connect 2.0 (http://dev.hubspot.com/) (namespace: webhooks-nio-http-client) - WebhooksExecutorDaemon-executor",
+            "content-length": "309",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "216.157.42.38",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "AU",
+            "cf-ray": "a471820f48c0dc6d-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "216.157.42.38, 172.68.210.10",
+            "x-forwarded-host": "spls.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-swc-18-5cd786d7b9-w79kp",
+            "x-hubspot-request-timestamp": "1791424365912",
+            "x-hubspot-signature": "e619a1de49700d68712d404a98a7e6a1e65c3b49c3f375d708ec03e5321dda29",
+            "x-hubspot-signature-v3": "BnWtb2lzbOsJbCOR4jaSIGUVJW+S9fah6zMg73RZDa4=",
+            "x-hubspot-signature-version": "v1",
+            "x-hubspot-timeout-millis": "10000",
+            "x-is-trusted": "yes",
+            "x-real-ip": "216.157.42.38"
+          },
+          "params": {},
+          "query": {},
+          "body": [
+            {
+              "eventId": 15484130,
+              "subscriptionId": 8045474,
+              "portalId": 443401066,
+              "appId": 54092794,
+              "occurredAt": 1791424364773,
+              "subscriptionType": "deal.propertyChange",
+              "attemptNumber": 0,
+              "objectId": 294990871003,
+              "propertyName": "n8n_trigger_creation",
+              "propertyValue": "true",
+              "changeSource": "CRM_UI",
+              "sourceId": "userId:79175330"
+            }
+          ],
+          "webhookUrl": "https://spls.app.n8n.cloud/webhook-test/simpro-upsert",
+          "executionMode": "test"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Route by HubSpot Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by HubSpot Event": {
+      "main": [
+        [
+          {
+            "node": "Log Site Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Company Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Contact Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Deal Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Site Event": {
+      "main": [
+        [
+          {
+            "node": "Upsert Site in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Site in Simpro": {
+      "main": [
+        [
+          {
+            "node": "Get Site-Contact Associations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Site-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Site-Contact Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Site Primary Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Site Primary Contact": {
+      "main": [
+        [
+          {
+            "node": "Update Site Primary Contact in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Site-Company Associations": {
+      "main": [
+        [
+          {
+            "node": "Split Out Site Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Site Customers": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Site Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Site Customers": {
+      "main": [
+        [
+          {
+            "node": "Collect Site Customer IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Site Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Site Customer": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Site Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Site Customer IDs": {
+      "main": [
+        [
+          {
+            "node": "Associate Site with Customers in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Company Event": {
+      "main": [
+        [
+          {
+            "node": "Upsert Company in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Company in Simpro": {
+      "main": [
+        [
+          {
+            "node": "Get Company-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Company-Site Associations": {
+      "main": [
+        [
+          {
+            "node": "Split Out Company Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Company Sites": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Company Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Company Sites": {
+      "main": [
+        [
+          {
+            "node": "Collect Company Site IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Company Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Company Site": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Company Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Company Site IDs": {
+      "main": [
+        [
+          {
+            "node": "Associate Company with Sites in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Contact Event": {
+      "main": [
+        [
+          {
+            "node": "Upsert Contact in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Deal Event": {
+      "main": [
+        [
+          {
+            "node": "Get Deal-Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal-Contact Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Deal Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Deal Contact": {
+      "main": [
+        [
+          {
+            "node": "Get Deal-Company Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal-Company Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Deal Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Deal Customer": {
+      "main": [
+        [
+          {
+            "node": "Get Deal-Site Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal-Site Associations": {
+      "main": [
+        [
+          {
+            "node": "Upsert Deal Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Deal Site": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HubSpot Deal": {
+      "main": [
+        [
+          {
+            "node": "Route by Deal Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Deal Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Upsert Quote in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Job in Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Record": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "7fb43df9-5ba3-4797-9510-3b1d07cebe81",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "vEEMhBa6bLX4uH7o",
+  "tags": []
+}
