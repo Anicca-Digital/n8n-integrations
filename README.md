@@ -19,6 +19,7 @@ workflows/
 | simpro-to-hubspot | [SPL] Simpro -> HubSpot (Scheduled Updates) | Every 30 min | Polls Simpro (If-Modified-Since) for changed Customers, Sites, Contacts, Quotes and Jobs and runs the [SPL] Simpro -> HubSpot router for each one |
 | sub | [SPL] Upsert Company in HubSpot | Called by a workflow | Simpro company customer → HubSpot company |
 | sub | [SPL] Upsert Contact in HubSpot | Called by a workflow | Simpro contact → HubSpot contact |
+| sub | [SPL] Upsert Site in HubSpot | Called by a workflow | Simpro site → HubSpot Site (0-420) |
 | sub | [SPL] Upsert Quote in HubSpot | Called by a workflow | Simpro quote → HubSpot deal (Quote pipeline, stage from quote status) plus line items from cost centers |
 | sub | [SPL] Upsert Job in HubSpot | Called by a workflow | Simpro job → HubSpot deal (Jobs pipeline) plus line items from cost centers |
 | sub | [SPL] Upsert Company in Simpro | Called by a workflow | HubSpot company → Simpro company customer |

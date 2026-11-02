@@ -1,0 +1,278 @@
+{
+  "name": "[SPL] Upsert Site in HubSpot",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"simpro_site_id\": \"a string\"\n}"
+      },
+      "id": "23a6af8a-49df-491d-86a4-616be8be4eea",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -1040,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $json.simpro_site_id }}"
+            }
+          ]
+        }
+      },
+      "id": "6431e957-3b3c-4eab-b057-e7f1cd15a962",
+      "name": "Log Site ID",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        -864,
+        144
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the Simpro site ID to execution data so runs are searchable."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "58ecd9dc-1c98-4e3e-b909-8ac16f7b34de",
+              "name": "hubspotSitesUrl",
+              "value": "https://api.hubapi.com/crm/objects/2026-09/0-420",
+              "type": "string"
+            },
+            {
+              "id": "75567d5d-97f0-41e5-a605-f2c609370700",
+              "name": "simproSitesUrl",
+              "value": "https://spl.simprosuite.com/api/v1.0/companies/0/sites",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "0cc0d250-ff23-43b4-bc25-12af2f18c2d0",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -656,
+        144
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: HubSpot Site object URL (0-420) and Simpro sites URL (company 0 is hardcoded)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproSitesUrl }}/{{ $('When Executed by Another Workflow').first().json.simpro_site_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "d61756ba-ec99-4e8a-89bf-bc6b9228457a",
+      "name": "Get Simpro Site",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -448,
+        144
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Fetches the current Site from Simpro. This is the source for every HubSpot field."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.hubspotSitesUrl }}/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  filterGroups: [\n    { filters: [ { propertyName: 'simpro_site_id', operator: 'EQ', value: String($('Get Simpro Site').first().json.ID) } ] },\n  ],\n  properties: ['simpro_site_id'],\n  sorts: ['createdate'],\n  limit: 1,\n}) }}",
+        "options": {}
+      },
+      "id": "3ce8493a-d050-4868-9df9-6cc24e6a8d48",
+      "name": "Find HubSpot Site by Simpro ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -240,
+        144
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Searches HubSpot Sites on simpro_site_id (oldest match first, one result). No match returns results: [] so the next node creates the Site."
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Find HubSpot Site by Simpro ID').first().json.results?.[0] ? 'PATCH' : 'POST' }}",
+        "url": "={{ $('Workflow Config').first().json.hubspotSitesUrl + ($('Find HubSpot Site by Simpro ID').first().json.results?.[0] ? '/' + $('Find HubSpot Site by Simpro ID').first().json.results[0].id : '') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const site = $('Get Simpro Site').first().json;\n  const blank = (v) => v === null || v === undefined || v === '' || v === 'null';\n  const keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => !blank(v)).map(([k, v]) => [k, String(v)]));\n  return {\n    properties: keep({\n      simpro_site_id: site.ID,\n      hs_name: site.Name,\n      hs_address_1: site.Address?.Address,\n      hs_city: site.Address?.City,\n      hs_state_province: site.Address?.State,\n      hs_zip: site.Address?.PostalCode,\n      country: site.Address?.Country,\n      zone: site.Zone?.ID,\n      billing_address: site.BillingAddress?.Address,\n      billing_city: site.BillingAddress?.City,\n      billing_state: site.BillingAddress?.State,\n      billing_postal_code: site.BillingAddress?.PostalCode,\n    }),\n  };\n})() }}",
+        "options": {}
+      },
+      "id": "e685353d-df4f-4a5e-b2a4-9ed7908a7e79",
+      "name": "Create or Update HubSpot Site",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -32,
+        144
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "One node for both paths: PATCH if the search found a Site, otherwise POST. EDIT HERE to change the field map. Blank Simpro values are skipped, so a PATCH never wipes data HubSpot holds. Not retried (create)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6ae2771a-7513-4d99-8fa3-6db9702aee4c",
+              "name": "id",
+              "value": "={{ $('Create or Update HubSpot Site').first().json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "62b50ce3-cea0-43f5-81a4-7ab2b83ef8ff",
+      "name": "Return HubSpot Site ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        176,
+        144
+      ],
+      "notesInFlow": true,
+      "notes": "Final output to the parent: { id } (the HubSpot Site record ID)."
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "simpro_site_id": "61953",
+          "simpro_company_id": "0"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Site ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Site ID": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Site": {
+      "main": [
+        [
+          {
+            "node": "Find HubSpot Site by Simpro ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find HubSpot Site by Simpro ID": {
+      "main": [
+        [
+          {
+            "node": "Create or Update HubSpot Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Update HubSpot Site": {
+      "main": [
+        [
+          {
+            "node": "Return HubSpot Site ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "7751cfc5-6dc4-4160-a691-9e80b3bf5baa",
+  "meta": {
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "P99kOJdNNrZklIsq",
+  "tags": []
+}
