@@ -1,0 +1,252 @@
+{
+  "name": "[SPL] Check Simpro Test Record",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "80b11755-00ff-48a0-a704-41144f22b15d",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Receives the Simpro event exactly as the router has it: { body: { name, reference: { companyID, <type>ID } } }. Input data mode must read 'Accept all data'."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1332fd50-9cc4-4e4a-a4e3-49e5df1147b9",
+              "name": "namePrefix",
+              "value": "HS TEST - ",
+              "type": "string"
+            },
+            {
+              "id": "3d5dd911-8a34-44ba-b45c-f62cb1c8a475",
+              "name": "simproBaseUrl",
+              "value": "https://spl.simprosuite.com/api/v1.0",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "0cb858b7-211d-4cc6-8991-aa064132fce3",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: the name prefix a record must start with to be synced (case-sensitive), and the Simpro API base URL."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cab41b2c-da58-465d-9dc2-8d6f9334cfce",
+              "name": "recordPath",
+              "value": "={{ (() => {\n  const r = $json.body?.reference ?? {};\n  const paths = {\n    'Site': `companies/${r.companyID}/sites/${r.siteID}`,\n    'Company customer': `companies/0/customers/companies/${r.customerID}`,\n    'Contact': `companies/0/contacts/${r.contactID}`,\n    'Quote': `companies/${r.companyID}/quotes/${r.quoteID}`,\n    'Job': `companies/${r.companyID}/jobs/${r.jobID}`,\n  };\n  return paths[$json.body?.name] ?? '';\n})() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "a0a0fb50-81f4-4da3-a042-6bb0b17dac04",
+      "name": "Build Simpro Record Path",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        416,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Maps the event type to its Simpro API path (same paths the router uses). Unknown types give an empty path."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7f671347-2d6d-42f3-9463-48eeea098c09",
+              "leftValue": "={{ String($json.recordPath !== '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ad7ee404-6c68-4b80-96d8-3c8a9d4a46bd",
+      "name": "Known Record Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "True → fetch the record. False → not a Site / Company customer / Contact / Quote / Job event, so it is not a test record."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproBaseUrl }}/{{ $json.recordPath }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "730974e9-b575-4b68-af2f-de1f23241a4b",
+      "name": "Get Simpro Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        -96
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Fetches the record that triggered the event so its current name can be checked."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ (() => {\n  const rec = $('Get Simpro Record').first().json;\n  const prefix = $('Workflow Config').first().json.namePrefix;\n  // Site / Quote / Job use Name, company customers use CompanyName, contacts use GivenName + FamilyName.\n  const recordName = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();\n  return { ...$('When Executed by Another Workflow').first().json, recordName, isTestRecord: recordName.startsWith(prefix) };\n})() }}",
+        "options": {}
+      },
+      "id": "db9c9d47-c018-4e6c-a0b3-bb7f68a33905",
+      "name": "Return Check Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1072,
+        -96
+      ],
+      "notesInFlow": true,
+      "notes": "Output to the router: the original event plus recordName and isTestRecord (true when the name starts with namePrefix)."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ ({ ...$('When Executed by Another Workflow').first().json, recordName: '', isTestRecord: false }) }}",
+        "options": {}
+      },
+      "id": "105b6374-645f-4d39-97a6-872f6139f80b",
+      "name": "Return Not A Test Record",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        96
+      ],
+      "notesInFlow": true,
+      "notes": "Unknown event type: returns the original event with isTestRecord false."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Build Simpro Record Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Simpro Record Path": {
+      "main": [
+        [
+          {
+            "node": "Known Record Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Known Record Type": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Not A Test Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Record": {
+      "main": [
+        [
+          {
+            "node": "Return Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "meta": {
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
