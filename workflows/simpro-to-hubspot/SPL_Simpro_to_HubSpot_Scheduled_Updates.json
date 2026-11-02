@@ -1,0 +1,730 @@
+{
+  "name": "[SPL] Simpro -> HubSpot (Scheduled Updates)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1616,
+        224
+      ],
+      "id": "f3cb8b8c-abc2-42d8-8c1c-c5e16614b334",
+      "name": "Every 30 Minutes",
+      "notesInFlow": true,
+      "notes": "Starts a poll every 30 minutes (production runs only - publish the workflow)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync window + config for the poller. Single source of truth: edit values HERE only.\nconst CONFIG = {\n  // --- Simpro ---\n  simproBaseUrl: 'https://spl.simprosuite.com/api/v1.0', // same host as the existing Get Simpro * nodes\n  simproCompanyId: 4,        // Quotes + Jobs. From the pinned Job webhook event (reference.companyID = 4). CONFIRM with SPL.\n  simproSharedCompanyId: 0,  // Customers, Contacts, Sites. Matches the /companies/0/ already used by Get Simpro Customer / Contact.\n  // --- Window ---\n  overlapMinutes: 2,          // re-read this far back from the last window end (clock skew / late commits). Upserts are idempotent.\n  initialLookbackMinutes: 35, // used when there is no saved watermark (first run, or any manual test run)\n  windowStartOverride: '',    // optional ISO date-time e.g. '2026-10-07T00:00:00Z' - forces the window start (backfill / recovery). Clear afterwards.\n};\n\nconst state = $getWorkflowStaticData('global'); // only persists on production (trigger) runs, not manual test runs\nconst now = new Date();\nlet from;\nlet fromSource;\n\nif (CONFIG.windowStartOverride) {\n  from = new Date(CONFIG.windowStartOverride);\n  if (isNaN(from.getTime())) {\n    throw new Error('windowStartOverride is not a valid ISO date-time: ' + CONFIG.windowStartOverride);\n  }\n  fromSource = 'override';\n} else if (state.lastWindowEnd) {\n  from = new Date(new Date(state.lastWindowEnd).getTime() - CONFIG.overlapMinutes * 60000);\n  fromSource = 'watermark';\n} else {\n  from = new Date(now.getTime() - CONFIG.initialLookbackMinutes * 60000);\n  fromSource = 'initial lookback';\n}\nif (from.getTime() >= now.getTime()) {\n  throw new Error('Sync window starts in the future (' + from.toISOString() + '). Check windowStartOverride and the saved watermark.');\n}\n\nreturn [{ json: {\n  ...CONFIG,\n  windowFrom: from.toISOString(),\n  windowTo: now.toISOString(),\n  ifModifiedSince: from.toUTCString(), // Simpro If-Modified-Since needs an HTTP-date in GMT\n  fromSource,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        224
+      ],
+      "id": "1579c40b-160c-4b24-9bea-f5ee48dc5378",
+      "name": "Build Sync Window",
+      "notesInFlow": true,
+      "notes": "Config + time window: last saved window end minus 2 min overlap (or last 35 min on the first run). Edit company IDs here."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.simproBaseUrl }}/companies/{{ $('Build Sync Window').first().json.simproSharedCompanyId }}/customers/companies/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "columns",
+              "value": "ID"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Modified-Since",
+              "value": "={{ $('Build Sync Window').first().json.ifModifiedSince }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !Array.isArray($response.body) || $response.body.length === 0 || ($response.headers['result-pages'] ? $pageCount >= Number($response.headers['result-pages']) : $response.body.length < 100) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 40,
+              "requestInterval": 150
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1136,
+        224
+      ],
+      "id": "31f208cb-bec5-4a22-b9d0-96823910e01e",
+      "name": "Fetch Changed Customers",
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Simpro company customers modified since the window start (If-Modified-Since). IDs only, paginated 100/page."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.simproBaseUrl }}/companies/{{ $('Build Sync Window').first().json.simproSharedCompanyId }}/sites/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "columns",
+              "value": "ID"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Modified-Since",
+              "value": "={{ $('Build Sync Window').first().json.ifModifiedSince }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !Array.isArray($response.body) || $response.body.length === 0 || ($response.headers['result-pages'] ? $pageCount >= Number($response.headers['result-pages']) : $response.body.length < 100) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 40,
+              "requestInterval": 150
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -896,
+        224
+      ],
+      "id": "416deed3-830b-4997-a7a9-89cfa60426ff",
+      "name": "Fetch Changed Sites",
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Simpro sites modified since the window start. Runs once; chained so each list is fetched exactly once."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.simproBaseUrl }}/companies/{{ $('Build Sync Window').first().json.simproSharedCompanyId }}/contacts/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "columns",
+              "value": "ID"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Modified-Since",
+              "value": "={{ $('Build Sync Window').first().json.ifModifiedSince }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !Array.isArray($response.body) || $response.body.length === 0 || ($response.headers['result-pages'] ? $pageCount >= Number($response.headers['result-pages']) : $response.body.length < 100) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 40,
+              "requestInterval": 150
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -656,
+        224
+      ],
+      "id": "0115bb57-82ac-405b-9e62-70a338c69d03",
+      "name": "Fetch Changed Contacts",
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Simpro contacts modified since the window start."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.simproBaseUrl }}/companies/{{ $('Build Sync Window').first().json.simproCompanyId }}/quotes/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "columns",
+              "value": "ID"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Modified-Since",
+              "value": "={{ $('Build Sync Window').first().json.ifModifiedSince }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !Array.isArray($response.body) || $response.body.length === 0 || ($response.headers['result-pages'] ? $pageCount >= Number($response.headers['result-pages']) : $response.body.length < 100) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 40,
+              "requestInterval": 150
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -416,
+        224
+      ],
+      "id": "9d353ad2-6f58-4df5-8b7b-41139bb349ac",
+      "name": "Fetch Changed Quotes",
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Simpro quotes modified since the window start (company-scoped)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.simproBaseUrl }}/companies/{{ $('Build Sync Window').first().json.simproCompanyId }}/jobs/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "columns",
+              "value": "ID"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Modified-Since",
+              "value": "={{ $('Build Sync Window').first().json.ifModifiedSince }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !Array.isArray($response.body) || $response.body.length === 0 || ($response.headers['result-pages'] ? $pageCount >= Number($response.headers['result-pages']) : $response.body.length < 100) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 40,
+              "requestInterval": 150
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -176,
+        224
+      ],
+      "id": "31a5ba6a-9023-42ee-a537-5101bee7d85a",
+      "name": "Fetch Changed Jobs",
+      "notesInFlow": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Simpro jobs modified since the window start (company-scoped)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the five Simpro \"changed since\" lists into ONE item per changed record, shaped exactly like\n// the webhook payload the Record Sync workflow already understands:\n//   { body: { name: 'Site', reference: { companyID, siteID } } }\nconst win = $('Build Sync Window').first().json;\n\nconst SOURCES = [\n  { node: 'Fetch Changed Customers', event: 'Company customer', idKey: 'customerID', companyId: win.simproSharedCompanyId },\n  { node: 'Fetch Changed Sites',     event: 'Site',             idKey: 'siteID',     companyId: win.simproSharedCompanyId },\n  { node: 'Fetch Changed Contacts',  event: 'Contact',          idKey: 'contactID',  companyId: win.simproSharedCompanyId },\n  { node: 'Fetch Changed Quotes',    event: 'Quote',            idKey: 'quoteID',    companyId: win.simproCompanyId },\n  { node: 'Fetch Changed Jobs',      event: 'Job',              idKey: 'jobID',      companyId: win.simproCompanyId },\n];\n\nconst records = [];\nconst counts = {};\n\nfor (const s of SOURCES) {\n  const pages = $(s.node).all().map(i => i.json); // one item per page (fullResponse)\n  const seen = new Set();\n  let rows = 0;\n  let reportedTotal = null;\n\n  for (const page of pages) {\n    if (page.statusCode === 304) continue; // Simpro: nothing modified since the window start\n    if (page.statusCode !== 200) {\n      throw new Error(s.node + ': Simpro returned HTTP ' + page.statusCode + ' - ' + JSON.stringify(page.body).slice(0, 300));\n    }\n    if (!Array.isArray(page.body)) {\n      throw new Error(s.node + ': expected a JSON array from Simpro, got ' + typeof page.body);\n    }\n    if (reportedTotal === null && page.headers && page.headers['result-total'] !== undefined) {\n      reportedTotal = Number(page.headers['result-total']);\n    }\n    for (const row of page.body) {\n      if (row === null || typeof row !== 'object' || row.ID === undefined || row.ID === null) {\n        throw new Error(s.node + ': a returned record has no ID - check the columns=ID query parameter.');\n      }\n      rows++;\n      if (seen.has(row.ID)) continue;\n      seen.add(row.ID);\n      records.push({ json: {\n        hasRecords: true,\n        body: { name: s.event, reference: { companyID: s.companyId, [s.idKey]: row.ID } },\n        meta: { source: 'poll', windowFrom: win.windowFrom, windowTo: win.windowTo },\n      } });\n    }\n  }\n\n  // The pagination cap stops silently - fail loudly instead of syncing a partial window.\n  if (reportedTotal !== null && rows < reportedTotal) {\n    throw new Error(s.node + ': read ' + rows + ' of ' + reportedTotal + ' changed records (page cap of 40 x 100 reached). '\n      + 'Shorten the window (windowStartOverride) or raise Max Pages on that node.');\n  }\n  counts[s.event] = seen.size;\n}\n\nif (records.length === 0) {\n  return [{ json: { hasRecords: false, windowFrom: win.windowFrom, windowTo: win.windowTo, counts } }];\n}\nreturn records;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        224
+      ],
+      "id": "66d9172d-04a0-4164-932c-008a6070a76b",
+      "name": "Build Record List",
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per changed record, shaped like the old webhook payload. Fails loudly on a non-200, a bad shape or a truncated page cap."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "50c613bc-cb04-4cbb-bc59-f0cd5e04808e",
+              "leftValue": "={{ String($json.hasRecords) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        304,
+        224
+      ],
+      "id": "6aaefafb-704f-4209-a838-6fa739897062",
+      "name": "Has Records",
+      "notesInFlow": true,
+      "notes": "True: at least one changed record - loop. False: empty window - go straight to Finish Run so the window still advances."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        544,
+        128
+      ],
+      "id": "c246a27a-59f2-4efb-9269-7a6a9dafd526",
+      "name": "Loop Over Records",
+      "notesInFlow": true,
+      "notes": "One record at a time (batch 1). Output 0 = done, output 1 = next record."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "wtmUVTe87Q45JLX1",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/wtmUVTe87Q45JLX1",
+          "cachedResultName": "[SPL] Simpro -> HubSpot"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        784,
+        288
+      ],
+      "id": "8d25cf73-7f40-47d2-815f-ab248519d674",
+      "name": "Sync Record",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Runs the Record Sync workflow for this one record and waits. A failure is captured (not thrown) so the rest of the batch still runs; Finish Run raises it at the end."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collapse whatever the sub-workflow returned (0, 1 or many items) into exactly ONE result item,\n// so the loop receives one clean result per record. Deliberately runOnceForAllItems.\nconst rec = $('Loop Over Records').first().json;\nconst ref = rec.body.reference;\nconst idKey = Object.keys(ref).find(k => k !== 'companyID');\n\n// With onError = continueRegularOutput, a failed sub-execution comes back as an item carrying `error`.\nconst failure = $input.all().map(i => i.json).find(j => j && j.error);\nlet error = null;\nif (failure) {\n  const e = failure.error;\n  error = typeof e === 'string' ? e : ((e && (e.message || e.description)) || JSON.stringify(e));\n}\n\nreturn [{ json: { ok: !failure, type: rec.body.name, id: ref[idKey], error } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        288
+      ],
+      "id": "a58bb313-5d04-4f84-9c8f-cf353563d503",
+      "name": "Note Result",
+      "notesInFlow": true,
+      "notes": "Collapses the sub-workflow output to ONE ok/failed item per record and feeds it back into the loop."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs ONCE per poll: when the loop is finished, or straight away when there was nothing to sync.\n// Fails the run (-> error workflow) if any record failed; only advances the watermark on full success.\nconst win = $('Build Sync Window').first().json;\nconst expected = $('Build Record List').all().filter(i => i.json.hasRecords === true).length;\nconst results = $input.all().map(i => i.json).filter(j => j.ok !== undefined);\n\nif (results.length !== expected) {\n  throw new Error('Poll loop returned ' + results.length + ' result(s) for ' + expected\n    + ' record(s) - NOT advancing the window. Check the Loop Over Records wiring.');\n}\n\nconst failed = results.filter(r => r.ok === false);\nif (failed.length > 0) {\n  const lines = failed.slice(0, 20).map(f => '- ' + f.type + ' ' + f.id + ': ' + f.error);\n  throw new Error(failed.length + ' of ' + results.length + ' record(s) failed for window '\n    + win.windowFrom + ' to ' + win.windowTo + '. The window is NOT advanced, so the next run re-reads it '\n    + '(upserts are idempotent).\\n' + lines.join('\\n'));\n}\n\n// Full success: advance the watermark. Only persists on production (trigger) runs.\nconst state = $getWorkflowStaticData('global');\nstate.lastWindowEnd = win.windowTo;\n\nconst byType = {};\nfor (const r of results) byType[r.type] = (byType[r.type] || 0) + 1;\n\nreturn [{ json: {\n  status: 'ok',\n  recordsSynced: results.length,\n  byType,\n  windowFrom: win.windowFrom,\n  windowTo: win.windowTo,\n  windowStartedFrom: win.fromSource,\n  watermarkSavedTo: win.windowTo,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        32
+      ],
+      "id": "67dbd3b9-9e73-4ea1-beb9-8c906f3a8be1",
+      "name": "Finish Run",
+      "notesInFlow": true,
+      "notes": "Once per poll: throws if any record failed (window not advanced, next run retries it); otherwise saves the new window end."
+    }
+  ],
+  "pinData": {
+    "Build Record List": [
+      {
+        "json": {
+          "hasRecords": true,
+          "body": {
+            "name": "Job",
+            "reference": {
+              "companyID": 4,
+              "jobID": 468672
+            }
+          },
+          "meta": {
+            "source": "poll",
+            "windowFrom": "2026-10-07T09:55:57.106Z",
+            "windowTo": "2026-10-07T10:30:57.106Z"
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Build Sync Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sync Window": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Customers": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Sites": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Contacts": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Quotes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Jobs": {
+      "main": [
+        [
+          {
+            "node": "Build Record List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record List": {
+      "main": [
+        [
+          {
+            "node": "Has Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Records": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Records",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Records": {
+      "main": [
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sync Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Record": {
+      "main": [
+        [
+          {
+            "node": "Note Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Note Result": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "b72cb0a1-d1b8-476f-b4cc-26665433d04b",
+  "meta": {
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "oMlWjpJfasD7rlle",
+  "tags": []
+}

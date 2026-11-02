@@ -1,0 +1,287 @@
+{
+  "name": "[SPL] Upsert Company in Simpro",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"hubspot_comapny_id\": 123\n}"
+      },
+      "id": "2a0d254c-e415-4f16-a07e-7241144f61b2",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -640,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $json.hubspot_comapny_id }}"
+            }
+          ]
+        }
+      },
+      "id": "c4fdf916-86e2-40d7-a7dd-cc562db4f468",
+      "name": "Log Company ID",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        -480,
+        176
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot company ID to execution data so runs are searchable."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ccb5f994-f223-4c4b-88d8-4a1773ed4f94",
+              "name": "hubspotCompaniesUrl",
+              "value": "https://api.hubapi.com/crm/objects/2026-09/companies",
+              "type": "string"
+            },
+            {
+              "id": "665f564e-e09d-4586-aa7e-6d849c4e888b",
+              "name": "simproCompaniesUrl",
+              "value": "https://spl.simprosuite.com/api/v1.0/companies/0/customers/companies",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "fb3a8370-5108-4308-94a8-1c077716235e",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        176
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: HubSpot companies URL and Simpro company-customers URL (company 0 is hardcoded; a plain /customers/ 404s)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.hubspotCompaniesUrl }}/{{ $('When Executed by Another Workflow').first().json.hubspot_comapny_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "properties",
+              "value": "simpro_customer_id,name,address,city,zip,state,phone,website,country,email,abn,billing_address,billing_city,billing_state,billing_postalcode,billing_country"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b968b810-c112-451f-a0b4-4ef75f06c163",
+      "name": "Get HubSpot Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -64,
+        176
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Fetches the HubSpot Company. EDIT HERE: add or remove properties in the properties query below, then add the matching line in the Simpro body."
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Get HubSpot Company').first().json.properties.simpro_customer_id ? 'PATCH' : 'POST' }}",
+        "url": "={{ $('Workflow Config').first().json.simproCompaniesUrl }}/{{ $('Get HubSpot Company').first().json.properties.simpro_customer_id ?? '' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const c = $('Get HubSpot Company').first().json.properties;\n  return {\n    CompanyName: c.name,\n    Address: {\n      Address: c.address || '',\n      City: c.city || '',\n      State: c.state || '',\n      PostalCode: c.zip || '',\n      Country: c.country || '',\n    },\n    BillingAddress: {\n      Address: c.billing_address || '',\n      City: c.billing_city || '',\n      State: c.billing_state || '',\n      PostalCode: c.billing_postalcode || '',\n      Country: c.billing_country || '',\n    },\n    Phone: c.phone || '',\n    Website: c.website || '',\n    EIN: c.abn || '',\n  };\n})() }}",
+        "options": {}
+      },
+      "id": "00d8a007-2540-4eb1-a982-373176f7a186",
+      "name": "Create or Update Simpro Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        144,
+        176
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "One node for both paths: PATCH if the HubSpot Company has simpro_customer_id, otherwise POST a new company-type customer. EDIT HERE to change fields. Blank HubSpot values are sent as empty strings (as before). Not retried (create)."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.hubspotCompaniesUrl }}/{{ $('When Executed by Another Workflow').first().json.hubspot_comapny_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ properties: { simpro_customer_id: String($('Create or Update Simpro Customer').first().json.ID ?? $('Get HubSpot Company').first().json.properties.simpro_customer_id) } }) }}",
+        "options": {}
+      },
+      "id": "3d545250-c46f-4bbf-947b-9a0a8f2b4743",
+      "name": "Save Simpro ID To HubSpot Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        352,
+        176
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Stamps the Simpro customer ID on the HubSpot Company so the next run updates instead of creating. Runs on every pass; writing an unchanged value is a no-op. Idempotent PATCH."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "99964770-23c2-476e-8950-067ddeffc7e6",
+              "name": "simpro_id",
+              "value": "={{ $('Create or Update Simpro Customer').first().json.ID ?? $('Get HubSpot Company').first().json.properties.simpro_customer_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "76ade4a6-c546-4990-92a3-37dd6e595257",
+      "name": "Return Simpro Customer ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        560,
+        176
+      ],
+      "notesInFlow": true,
+      "notes": "Final output to the parent: { simpro_id } (the Simpro customer ID). Upsert Contact in Simpro reads this."
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "hubspot_comapny_id": 277085844936
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Company ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Company ID": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HubSpot Company": {
+      "main": [
+        [
+          {
+            "node": "Create or Update Simpro Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Update Simpro Customer": {
+      "main": [
+        [
+          {
+            "node": "Save Simpro ID To HubSpot Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Simpro ID To HubSpot Company": {
+      "main": [
+        [
+          {
+            "node": "Return Simpro Customer ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "48233427-91ce-4bbc-8420-0d99e03c3a43",
+  "meta": {
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "rjRxp1RRbXkKoPkk",
+  "tags": []
+}

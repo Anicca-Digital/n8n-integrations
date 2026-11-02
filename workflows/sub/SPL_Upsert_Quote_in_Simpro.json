@@ -1,0 +1,904 @@
+{
+  "name": "[SPL] Upsert Quote in Simpro",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"hubspot_deal_id\": \"a string\",\n  \"simpro_site_id\": \"a string\",\n  \"simpro_contact_id\": \"a string\", \n  \"simpro_customer_id\": \"a string\"\n}"
+      },
+      "id": "c055762a-8fe7-4141-a639-df2372f30060",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        272,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $json.hubspot_deal_id }}"
+            }
+          ]
+        }
+      },
+      "id": "8ed448af-9e72-4b5e-a789-bc24fa5a9e24",
+      "name": "Log Quote ID",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        432,
+        368
+      ],
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot deal ID to execution data so runs are searchable."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0d6a3255-a24e-4c0b-a859-d406fe23bc80",
+              "name": "simproQuotesUrl",
+              "value": "https://spl.simprosuite.com/api/v1.0/companies/4/quotes",
+              "type": "string"
+            },
+            {
+              "id": "36402890-3d77-430c-a42d-77dea097f038",
+              "name": "cfTenderNumber",
+              "value": "35",
+              "type": "string"
+            },
+            {
+              "id": "484eb05a-d697-40c3-b2a8-fcfb7dbfb7b2",
+              "name": "cfTenderStatus",
+              "value": "36",
+              "type": "string"
+            },
+            {
+              "id": "ceaba3dd-1edd-4dce-a8dd-23b59bc9da98",
+              "name": "cfVertical",
+              "value": "49",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "7c7a0f4e-7161-493f-896a-4e037f72b933",
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        368
+      ],
+      "notesInFlow": true,
+      "notes": "EDIT HERE: Simpro quotes base URL (company 4 hardcoded) and the Simpro custom field IDs for Tender Number, Tender Status and Vertical."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/deals/{{ $('When Executed by Another Workflow').first().json.hubspot_deal_id }}?properties=dealname,description,hubspot_owner_id,project_manager,simpro_quote_id,due_date,orderno,validity,simpro_description,project_tags,quote_type,tender_number,tender_status,vertical",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "244135ce-8abd-4122-ae85-94702632d0e6",
+      "name": "Get HubSpot Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        864,
+        368
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Reads the deal. Properties come back flat (properties.dealname). Dropped unused: dealstage, approved_date."
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "eEgc6EYXSSxSkc8D",
+          "mode": "list",
+          "cachedResultName": "SPL Users",
+          "cachedResultUrl": "/projects/43dwW57ugUqGoEUE/datatables/eEgc6EYXSSxSkc8D"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "HubSpot_ID",
+              "keyValue": "={{ $('Get HubSpot Deal').first().json.properties.project_manager }}"
+            }
+          ]
+        }
+      },
+      "id": "be906c5d-1445-4c71-81bb-a2d6fe032936",
+      "name": "Look Up Project Manager",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        368
+      ],
+      "notesInFlow": true,
+      "notes": "SPL Users data table: HubSpot project_manager → Simpro_ID. No match = 0 items = the run stops silently."
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "eEgc6EYXSSxSkc8D",
+          "mode": "list",
+          "cachedResultName": "SPL Users",
+          "cachedResultUrl": "/projects/43dwW57ugUqGoEUE/datatables/eEgc6EYXSSxSkc8D"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "HubSpot_ID",
+              "keyValue": "={{ $('Get HubSpot Deal').first().json.properties.hubspot_owner_id }}"
+            }
+          ]
+        }
+      },
+      "id": "ede4b09c-a722-45c3-bc2e-9a4355a71432",
+      "name": "Look Up Sales Person",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        368
+      ],
+      "notesInFlow": true,
+      "notes": "SPL Users data table: HubSpot deal owner → Simpro_ID (Salesperson). No match = 0 items = the run stops silently."
+    },
+    {
+      "parameters": {
+        "method": "={{ $('Get HubSpot Deal').first().json.properties.simpro_quote_id ? 'PATCH' : 'POST' }}",
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl + '/' + ($('Get HubSpot Deal').first().json.properties.simpro_quote_id ?? '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const deal = $('Get HubSpot Deal').first().json.properties;\n  const input = $('When Executed by Another Workflow').first().json;\n  const isNew = !deal.simpro_quote_id;\n  const asDate = (v) => /^\\d+$/.test(String(v)) ? DateTime.fromMillis(Number(v), { zone: 'utc' }) : DateTime.fromISO(String(v), { zone: 'utc' });\n  return {\n    Customer: Number(input.simpro_customer_id),\n    CustomerContact: Number(input.simpro_contact_id),\n    Site: Number(input.simpro_site_id),\n    Name: deal.dealname ?? '',\n    Description: deal.simpro_description ?? '',\n    Notes: deal.description ?? '',\n    Salesperson: Number($('Look Up Sales Person').first().json.Simpro_ID),\n    ProjectManager: Number($('Look Up Project Manager').first().json.Simpro_ID),\n    DueDate: deal.due_date ? asDate(deal.due_date).toFormat('yyyy-MM-dd') : null,\n    OrderNo: deal.orderno ?? '',\n    ValidityDays: deal.validity ? Number(deal.validity) : undefined,\n    Tags: (deal.project_tags ?? '').split(';').filter(Boolean).map(Number),\n    ...(isNew ? { Type: deal.quote_type ?? '' } : {}),\n  };\n})() }}",
+        "options": {}
+      },
+      "id": "8fbedcc6-50c0-4cfe-8a57-2587fa11b532",
+      "name": "Create or Update Simpro Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1488,
+        368
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "One node for both paths: PATCH if the deal already has simpro_quote_id, otherwise POST. Type is create-only. EDIT HERE to change quote fields. Not retried (create)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1034a4d9-2242-4967-8e50-5bd07bb41d9e",
+              "name": "simpro_quote_id",
+              "value": "={{ $('Create or Update Simpro Quote').first().json.ID ?? $('Get HubSpot Deal').first().json.properties.simpro_quote_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3acd516-95a8-4178-93e1-077a18c13322",
+      "name": "Capture Quote ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1696,
+        368
+      ],
+      "notesInFlow": true,
+      "notes": "Single source of the Simpro quote ID: the ID Simpro returned (new quote) or the one already on the deal (update)."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl }}/{{ $('Capture Quote ID').first().json.simpro_quote_id }}/customFields/{{ $('Workflow Config').first().json.cfTenderNumber }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ Value: $('Get HubSpot Deal').first().json.properties.tender_number ?? '' }) }}",
+        "options": {}
+      },
+      "id": "981b6749-7b83-4580-a121-a6fd5cddfa1a",
+      "name": "Set Tender Number Custom Field",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1904,
+        368
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Sets the Simpro quote custom field for Tender Number (field ID in Workflow Config). Runs before the line item sync so the run ends on Return Quote ID."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl }}/{{ $('Capture Quote ID').first().json.simpro_quote_id }}/customFields/{{ $('Workflow Config').first().json.cfTenderStatus }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ Value: $('Get HubSpot Deal').first().json.properties.tender_status ?? '' }) }}",
+        "options": {}
+      },
+      "id": "d486e77a-52fb-4b98-9f47-e5611e878bdc",
+      "name": "Set Tender Status Custom Field",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2112,
+        368
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Sets the Simpro quote custom field for Tender Status (field ID in Workflow Config). Runs before the line item sync so the run ends on Return Quote ID."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl }}/{{ $('Capture Quote ID').first().json.simpro_quote_id }}/customFields/{{ $('Workflow Config').first().json.cfVertical }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ Value: $('Get HubSpot Deal').first().json.properties.vertical ?? '' }) }}",
+        "options": {}
+      },
+      "id": "be804c0e-2d53-41af-aa35-e55bdbbf620c",
+      "name": "Set Vertical Custom Field",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2320,
+        368
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Sets the Simpro quote custom field for Vertical (field ID in Workflow Config). Runs before the line item sync so the run ends on Return Quote ID."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/deals/{{ $('When Executed by Another Workflow').first().json.hubspot_deal_id }}/associations/line_items?limit=500",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "03d89b6b-5ac9-4382-8a44-ee57fab2b1c7",
+      "name": "Get Deal Line Item IDs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2544,
+        368
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Lists the line items on the HubSpot deal. Each one is a Simpro quote cost center."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0afbc73e-255f-4fd1-8312-2cfa7129171c",
+              "leftValue": "={{ String(($('Get Deal Line Item IDs').first().json.results ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "69ba9fcb-a05d-430d-aab3-73266977c57b",
+      "name": "Deal Has Line Items",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2752,
+        368
+      ],
+      "notesInFlow": true,
+      "notes": "True → sync line items to cost centers. False → none, go straight to Return Quote ID (without this an empty list ends the run and nothing is returned). Tests the GET response on purpose."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/line_items/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  properties: ['price', 'simpro_id', 'cost_centre', 'name', 'simpro_section_id'],\n  inputs: $('Get Deal Line Item IDs').first().json.results.map(r => ({ id: String(r.toObjectId) })),\n}) }}",
+        "options": {}
+      },
+      "id": "a535a102-9b99-4c61-b45c-af816dd9e9d2",
+      "name": "Read Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2960,
+        288
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "One batch read for every line item (replaces a GET per item). Max 100 per call."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "id": "9b27f096-9122-4798-b513-d8b139966a9c",
+      "name": "Split Line Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        3168,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per line item. Everything below runs once per line item."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "23a8e628-7cea-4f8a-8de0-5e94fe8aa3ab",
+      "name": "Loop Over Line Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3392,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "Batch of 1. Output 0 = done, output 1 = next line item. reset is false so the return wires do not restart the loop."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e2c7d0b3-8c5c-4ce0-bb9b-e8cfe4e91473",
+              "leftValue": "={{ String(Boolean($json.properties?.simpro_id)) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "aedd660c-1e5c-4773-a93d-3ac2169739a6",
+      "name": "Line Item Has Simpro ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3600,
+        384
+      ],
+      "notesInFlow": true,
+      "notes": "True → already a Simpro cost center, PATCH it. False → new, create it. (Original had these branches swapped.)"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl }}/{{ $('Capture Quote ID').first().json.simpro_quote_id }}/sections/{{ $json.properties.simpro_section_id }}/costCenters/{{ $json.properties.simpro_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  CostCenter: Number($json.properties.cost_centre),\n  Name: $json.properties.name ?? '',\n  Total: { IncTax: Number($json.properties.price) },\n}) }}",
+        "options": {}
+      },
+      "id": "b5cc498f-9fab-4a0a-9ed4-320094a26c1d",
+      "name": "Update Quote Cost Center",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3808,
+        304
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "PATCH an existing quote cost center from the line item. Needs simpro_section_id on the line item."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl }}/{{ $('Capture Quote ID').first().json.simpro_quote_id }}/sections/?pageSize=250",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "b86ff6b7-f5df-4b51-bc46-0f6f8c449bba",
+      "name": "Get Quote Sections",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3808,
+        496
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "Lists the quote sections. If the quote has more than one, the cost center is created in each section."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.simproQuotesUrl }}/{{ $('Capture Quote ID').first().json.simpro_quote_id }}/sections/{{ $json.ID }}/costCenters/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  CostCenter: Number($('Loop Over Line Items').item.json.properties.cost_centre),\n  Name: $('Loop Over Line Items').item.json.properties.name ?? '',\n  Total: { IncTax: Number($('Loop Over Line Items').item.json.properties.price) },\n}) }}",
+        "options": {}
+      },
+      "id": "95d4af38-bc30-4a78-a16f-6b348896739f",
+      "name": "Create Quote Cost Center",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4016,
+        496
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "71p2Ps2oLXhe27mr",
+          "name": "SPL Simpro"
+        }
+      },
+      "notes": "POST a new cost center into the section for this line item. Not retried (create)."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/line_items/{{ $('Loop Over Line Items').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  properties: {\n    simpro_id: String($json.ID),\n    simpro_section_id: String($('Get Quote Sections').item.json.ID),\n  },\n}) }}",
+        "options": {}
+      },
+      "id": "273ca8de-118c-47f9-b86c-3ad8952fc892",
+      "name": "Save Simpro IDs To Line Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4224,
+        496
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YLZLsLfN752HplsL",
+          "name": "SPL Account"
+        }
+      },
+      "notes": "Writes the new cost center ID and section ID back to the line item so the next run PATCHes instead of creating. Idempotent PATCH."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1034a4d9-2242-4967-8e50-5bd07bb41d9e",
+              "name": "simpro_quote_id",
+              "value": "={{ $('Capture Quote ID').first().json.simpro_quote_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "79205ece-d369-4f1f-9ad8-5db6f27cc7ca",
+      "name": "Return Quote ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3392,
+        96
+      ],
+      "notesInFlow": true,
+      "notes": "Final output to the parent: { simpro_quote_id }. Reached from the loop done output, or directly when the deal has no line items."
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "hubspot_deal_id": "294990871003",
+          "simpro_site_id": "61953",
+          "simpro_contact_id": "263464",
+          "simpro_customer_id": "43704"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Quote ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Quote ID": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HubSpot Deal": {
+      "main": [
+        [
+          {
+            "node": "Look Up Project Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Project Manager": {
+      "main": [
+        [
+          {
+            "node": "Look Up Sales Person",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Sales Person": {
+      "main": [
+        [
+          {
+            "node": "Create or Update Simpro Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Update Simpro Quote": {
+      "main": [
+        [
+          {
+            "node": "Capture Quote ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Quote ID": {
+      "main": [
+        [
+          {
+            "node": "Set Tender Number Custom Field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Tender Number Custom Field": {
+      "main": [
+        [
+          {
+            "node": "Set Tender Status Custom Field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Tender Status Custom Field": {
+      "main": [
+        [
+          {
+            "node": "Set Vertical Custom Field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Vertical Custom Field": {
+      "main": [
+        [
+          {
+            "node": "Get Deal Line Item IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal Line Item IDs": {
+      "main": [
+        [
+          {
+            "node": "Deal Has Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal Has Line Items": {
+      "main": [
+        [
+          {
+            "node": "Read Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Quote ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Line Items": {
+      "main": [
+        [
+          {
+            "node": "Split Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Line Items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Line Items": {
+      "main": [
+        [
+          {
+            "node": "Return Quote ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Line Item Has Simpro ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Line Item Has Simpro ID": {
+      "main": [
+        [
+          {
+            "node": "Update Quote Cost Center",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Quote Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Quote Cost Center": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quote Sections": {
+      "main": [
+        [
+          {
+            "node": "Create Quote Cost Center",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Quote Cost Center": {
+      "main": [
+        [
+          {
+            "node": "Save Simpro IDs To Line Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Simpro IDs To Line Item": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "95a47ca4-519e-4a60-8799-9c723fb4064d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "SKSFPYbl7hLeoC2M",
+  "tags": []
+}
