@@ -184,11 +184,11 @@
           "values": [
             {
               "key": "id",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+              "value": "={{ $json.body[0].objectId }}"
             },
             {
               "key": "Type",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+              "value": "={{ $json.body[0].subscriptionType }}"
             }
           ]
         }
@@ -216,7 +216,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "hubspot_site_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId.toString() }}"
+            "hubspot_site_id": "={{ $('Route by HubSpot Event').first().json.body[0].objectId.toString() }}"
           },
           "matchingColumns": [
             "hubspot_site_id"
@@ -251,7 +251,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/contacts",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}/associations/contacts",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -350,7 +350,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/companies",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/0-420/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}/associations/companies",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -510,11 +510,11 @@
           "values": [
             {
               "key": "id",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+              "value": "={{ $json.body[0].objectId }}"
             },
             {
               "key": "Type",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+              "value": "={{ $json.body[0].subscriptionType }}"
             }
           ]
         }
@@ -542,7 +542,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "hubspot_comapny_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+            "hubspot_comapny_id": "={{ $('Route by HubSpot Event').first().json.body[0].objectId }}"
           },
           "matchingColumns": [
             "hubspot_comapny_id"
@@ -576,7 +576,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/companies/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/0-420",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/companies/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}/associations/0-420",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -736,11 +736,11 @@
           "values": [
             {
               "key": "id",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+              "value": "={{ $json.body[0].objectId }}"
             },
             {
               "key": "Type",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+              "value": "={{ $json.body[0].subscriptionType }}"
             }
           ]
         }
@@ -768,7 +768,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "hubspot_contact_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+            "hubspot_contact_id": "={{ $('Route by HubSpot Event').item.json.body[0].objectId }}"
           },
           "matchingColumns": [
             "hubspot_contact_id"
@@ -806,11 +806,11 @@
           "values": [
             {
               "key": "id",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].objectId }}"
+              "value": "={{ $json.body[0].objectId }}"
             },
             {
               "key": "Type",
-              "value": "={{ $('HubSpot Webhook').first().json.body[0].subscriptionType }}"
+              "value": "={{ $json.body[0].subscriptionType }}"
             }
           ]
         }
@@ -828,7 +828,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/contacts",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}/associations/contacts",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -899,7 +899,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/companies",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}/associations/companies",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -970,7 +970,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}/associations/0-420",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}/associations/0-420",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -1041,7 +1041,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('HubSpot Webhook').first().json.body[0].objectId }}?properties=pipeline",
+        "url": "={{ $('Workflow Config').first().json.hubspotApiUrl }}/deals/{{ $('Route by HubSpot Event').first().json.body[0].objectId }}?properties=pipeline",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -1145,7 +1145,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "hubspot_deal_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId.toString() }}",
+            "hubspot_deal_id": "={{ $('Route by HubSpot Event').first().json.body[0].objectId.toString() }}",
             "simpro_contact_id": "={{ $('Upsert Deal Contact').first().json.simpro_id.toString() }}",
             "simpro_site_id": "={{ $('Upsert Deal Site').first().json.simpro_id.toString() }}",
             "simpro_customer_id": "={{ $('Upsert Deal Customer').first().json.simpro_id.toString() }}"
@@ -1223,7 +1223,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "hubspot_deal_id": "={{ $('HubSpot Webhook').first().json.body[0].objectId.toString() }}",
+            "hubspot_deal_id": "={{ $('Route by HubSpot Event').first().json.body[0].objectId.toString() }}",
             "simpro_contact_id": "={{ $('Upsert Deal Contact').first().json.simpro_id.toString() }}",
             "simpro_site_id": "={{ $('Upsert Deal Site').first().json.simpro_id.toString() }}",
             "simpro_customer_id": "={{ $('Upsert Deal Customer').first().json.simpro_id.toString() }}"
@@ -1375,51 +1375,51 @@
         "json": {
           "headers": {
             "host": "spls.app.n8n.cloud",
-            "user-agent": "HubSpot Connect 2.0 (http://dev.hubspot.com/) (namespace: webhooks-nio-http-client) - WebhooksExecutorDaemon-executor",
-            "content-length": "309",
+            "user-agent": "HubSpot Connect 2.0 (http://dev.hubspot.com/) (namespace: webhooks-nio-http-client) - WebhooksExecutorDaemon-retryexecutor",
+            "content-length": "314",
             "accept": "*/*",
             "accept-encoding": "gzip, br",
             "cdn-loop": "cloudflare; loops=1; subreqs=1",
-            "cf-connecting-ip": "216.157.42.38",
+            "cf-connecting-ip": "216.157.42.42",
             "cf-ew-via": "15",
             "cf-ipcountry": "AU",
-            "cf-ray": "a471820f48c0dc6d-SYD",
+            "cf-ray": "a5426991bf4753ef-SYD",
             "cf-visitor": "{\"scheme\":\"https\"}",
             "cf-worker": "n8n.cloud",
             "content-type": "application/json",
-            "x-forwarded-for": "216.157.42.38, 172.68.210.10",
+            "x-forwarded-for": "216.157.42.42, 104.22.127.54",
             "x-forwarded-host": "spls.app.n8n.cloud",
             "x-forwarded-port": "443",
             "x-forwarded-proto": "https",
-            "x-forwarded-server": "traefik-prod-users-swc-18-5cd786d7b9-w79kp",
-            "x-hubspot-request-timestamp": "1791424365912",
-            "x-hubspot-signature": "e619a1de49700d68712d404a98a7e6a1e65c3b49c3f375d708ec03e5321dda29",
-            "x-hubspot-signature-v3": "BnWtb2lzbOsJbCOR4jaSIGUVJW+S9fah6zMg73RZDa4=",
+            "x-forwarded-server": "traefik-prod-users-swc-18-5cd786d7b9-qvsh9",
+            "x-hubspot-request-timestamp": "1793614886392",
+            "x-hubspot-signature": "9ce75af66408c4091ddaff914ace3348f5c001849906117c1fadd37f5c637d94",
+            "x-hubspot-signature-v3": "3RQ9PzmC7Hw0QKw2HBws0NzugXa/XIMoFG+BmpZbzGk=",
             "x-hubspot-signature-version": "v1",
             "x-hubspot-timeout-millis": "10000",
             "x-is-trusted": "yes",
-            "x-real-ip": "216.157.42.38"
+            "x-real-ip": "216.157.42.42"
           },
           "params": {},
           "query": {},
           "body": [
             {
-              "eventId": 15484130,
-              "subscriptionId": 8045474,
+              "eventId": 1633649849,
+              "subscriptionId": 7856799,
               "portalId": 443401066,
               "appId": 54092794,
-              "occurredAt": 1791424364773,
-              "subscriptionType": "deal.propertyChange",
-              "attemptNumber": 0,
-              "objectId": 294990871003,
+              "occurredAt": 1793614446888,
+              "subscriptionType": "contact.propertyChange",
+              "attemptNumber": 5,
+              "objectId": 368728620494,
               "propertyName": "n8n_trigger_creation",
               "propertyValue": "true",
               "changeSource": "CRM_UI",
               "sourceId": "userId:79175330"
             }
           ],
-          "webhookUrl": "https://spls.app.n8n.cloud/webhook-test/simpro-upsert",
-          "executionMode": "test"
+          "webhookUrl": "https://spls.app.n8n.cloud/webhook/simpro-upsert",
+          "executionMode": "production"
         },
         "pairedItem": {
           "item": 0
@@ -1806,13 +1806,13 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true
   },
-  "versionId": "7fb43df9-5ba3-4797-9510-3b1d07cebe81",
+  "versionId": "a077f733-2d65-427c-b2e0-17492dc1353b",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
