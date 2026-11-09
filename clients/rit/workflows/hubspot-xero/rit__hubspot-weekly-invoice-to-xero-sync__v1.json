@@ -1,0 +1,2765 @@
+{
+  "name": "RIT - HubSpot Weekly Invoice → Xero Invoice Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1072,
+        2288
+      ],
+      "id": "9babc51d-9d21-4a79-a248-590d657c6f6b",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Single source of truth for this automation. Nothing else needs editing to retune it.\nreturn [{\n  json: {\n    // ---- Xero (values carried over from the original sync workflow) ----\n    xeroBatchSize: 50,          // invoices per Xero request. Xero's guidance is \"up to 50\"; was 100. HubSpot batch calls cap at 100.\n    batchWaitSeconds: 10,       // pause between Xero batches (seconds). Keep under 65 so the execution is not offloaded to the database.\n    xeroTenantId: '1e9660fb-45a7-4a9b-9158-cc54c9e78f34',   // Xero organisation (tenant) - Anicca RIT\n    brandingThemeId: '294af06f-b8a6-4049-8420-763713693f3a',\n    currency: 'AUD',\n    invoiceStatus: 'DRAFT',     // status the invoice is created with in Xero\n    // Xero rental income account by company state. Anything else (or blank) falls back to defaultAccountId.\n    stateAccounts: { WA: 'WA5000', VIC: 'VIC5000', NSW: 'NSW5000' },\n    defaultAccountId: 'WA5000',\n\n    // ---- HubSpot (portal 443317712) ----\n    apiBase: 'https://api.hubapi.com',\n    apiVersion: '2026-09',                     // date-based HubSpot API version, read by every HubSpot request URL\n    batchSize: 50,                             // ids per HubSpot batch call (HubSpot allows 100)\n    openBatchSize: 10,                         // invoices per draft -> open call. Smaller than batchSize on purpose: opening is the heavy HubSpot step (a 50-invoice call returned 500 INTERNAL_ERROR on 8 Nov 2026).\n    guardLookbackDays: 0,                      // 0 = duplicate window is today only. Set to 1 for ONE recovery run the day after a failed run, then set back to 0.\n    companyFlagProperty: 'asset_delivered',    // company number property: invoiced when > 0\n    assetObjectType: '2-217972099',            // custom Assets object (p443317712_assets)\n    billableStatuses: ['active', 'to be returned'],   // asset status, compared lower-case\n    invoiceType: 'Weekly',\n    invoiceCurrency: 'AUD',\n    // The duplicate check looks at Weekly invoices created TODAY (start of day in the timezone below) that have a company.\n    timezone: 'Australia/Brisbane',            // 'today' is read in this zone\n    issueWeekday: 1,                           // invoice date = the FOLLOWING Monday (1 = Monday). Run on a Monday -> next week's Monday.\n    // Due date = the first such weekday on/after the invoice date, from the company's weekly_invoice_expiry_date (Tue-Fri today)\n    expiryWeekdays: { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5 },\n    billingContactTypeIds: [930, 931],         // Billing Contact association types (matched with the label below)\n    billingContactLabel: 'billing contact',\n    assocTypeIds: { invoiceToCompany: 179, invoiceToContact: 177, lineItemToInvoice: 410 },\n    companyProps: ['name', 'asset_delivered', 'state', 'xero_customer_id', 'hubspot_owner_id', 'weekly_invoice_expiry_date'],\n    assetProps: ['name', 'status', 'serial_number', 'contract_number', 'asset_number', 'xero_asset_id', 'xero_item_id'],\n    sourceLineItemProps: ['name', 'price', 'quantity', 'hs_product_id', 'hs_sku', 'description'],\n    invoiceDetailProps: ['hs_number', 'hs_purchase_order_number', 'hubspot_owner_id', 'hs_invoice_date', 'hs_due_date', 'hs_createdate', 'hs_invoice_status', 'xero_invoice_id'],\n    xeroLineItemProps: ['amount', 'price', 'quantity', 'name', 'asset_number', 'xero_asset_id', 'xero_item_id', 'description', 'serial_number']\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        2288
+      ],
+      "id": "fd36ec7b-a98c-40d6-a856-ecc41e694210",
+      "name": "Workflow Config",
+      "notesInFlow": true,
+      "notes": "Xero values carried over from the original workflow; HubSpot values added. Read by name from every other node."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/companies/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ filterGroups: [{ filters: [{ propertyName: $('Workflow Config').first().json.companyFlagProperty, operator: 'GT', value: '0' }] }], properties: $('Workflow Config').first().json.companyProps, sorts: [{ propertyName: 'hs_object_id', direction: 'ASCENDING' }], limit: 100 }) }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 300
+            }
+          }
+        }
+      },
+      "name": "Search Companies With Delivered Assets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "0ffa672d-07a1-4512-a4c0-69d5de980d14",
+      "position": [
+        -688,
+        2288
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Companies where asset_delivered > 0, 100 per page, paged until HubSpot stops returning a next cursor."
+    },
+    {
+      "parameters": {
+        "jsCode": "const found = new Map();\nlet total = 0;\nfor (const item of $input.all()) {\n  const page = item.json;\n  if (typeof page.total === 'number') total = page.total;\n  for (const c of page.results || []) found.set(String(c.id), c);\n}\nif (found.size !== total) {\n  throw new Error(`Company search returned ${found.size} of ${total} companies - paging was incomplete. Aborting before anything is created.`);\n}\nif (!found.size) return [];      // nothing to invoice: the run ends cleanly here\nconst companies = {};\nfor (const [id, c] of found) {\n  const p = c.properties || {};\n  companies[id] = { name: p.name || '', state: String(p.state || '').trim(), xeroContactId: String(p.xero_customer_id || '').trim(), ownerId: p.hubspot_owner_id || '', expiryDay: String(p.weekly_invoice_expiry_date || '').trim() };\n}\nreturn [{ json: { companies, companyIds: Object.keys(companies), outcomes: {}, issues: [], pendingXero: [] } }];"
+      },
+      "name": "Collect Companies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "426e51b9-04e5-4686-8b57-c62260791763",
+      "position": [
+        -464,
+        2288
+      ],
+      "notes": "One context item for the whole run. Fails the run if the pages collected do not add up to HubSpot's total. Ends the run cleanly when no company qualifies."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/invoices/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ filterGroups: [{ filters: [{ propertyName: 'type', operator: 'EQ', value: $('Workflow Config').first().json.invoiceType }, { propertyName: 'hs_createdate', operator: 'GTE', value: String(DateTime.now().setZone($('Workflow Config').first().json.timezone).startOf('day').minus({ days: $('Workflow Config').first().json.guardLookbackDays || 0 }).toMillis()) }] }], properties: ['type', 'hs_invoice_status', 'hs_createdate', 'xero_invoice_id'], sorts: [{ propertyName: 'hs_object_id', direction: 'ASCENDING' }], limit: 100 }) }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 300
+            }
+          }
+        }
+      },
+      "name": "Search Recent Weekly Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "69106c56-4021-4b31-9934-0cd51161b696",
+      "position": [
+        -240,
+        2288
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "ONE portal-wide search instead of a read per company: Weekly invoices created TODAY (start of day, Brisbane). Invoices with no company are ignored in 'Apply Guard'."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Collect Companies').first().json;\nconst found = new Map();\nlet total = 0;\nfor (const item of $input.all()) {\n  const page = item.json;\n  if (typeof page.total === 'number') total = page.total;\n  for (const inv of page.results || []) found.set(String(inv.id), inv);\n}\nif (found.size !== total) {\n  throw new Error(`Invoice guard search returned ${found.size} of ${total} invoices - paging was incomplete. Aborting before anything is created.`);\n}\nconst guardInvoices = [...found.values()].map(inv => {\n  const p = inv.properties || {};\n  return { id: String(inv.id), status: String(p.hs_invoice_status || '').toLowerCase(), createdMs: new Date(p.hs_createdate).getTime(), xeroId: String(p.xero_invoice_id || '').trim() };\n});\nreturn [{ json: { ...ctx, guardInvoices } }];"
+      },
+      "name": "Index Guard Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "76b68f69-223f-4377-9cdb-13fb617e53f0",
+      "position": [
+        -16,
+        2288
+      ],
+      "notes": "Collapses the search pages. Fails the run if the pages do not add up to HubSpot's total."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2f79e80b-7693-537e-8488-840f423aa2c0",
+              "leftValue": "={{ String($json.guardInvoices.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Guard Invoices?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "f757796c-ff11-4fe3-b148-fec5a1592683",
+      "position": [
+        208,
+        2288
+      ],
+      "notes": "False: nothing to check, skip the company lookup."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.guardInvoices.map(i => i.id);\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Guard Invoice IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "b4827785-abb8-4674-8db0-0da1b36a23d6",
+      "position": [
+        432,
+        2208
+      ],
+      "notes": "FAN-OUT: batches of guard invoice ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/invoices/companies/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Guard Invoice Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "a30ffbe5-119f-446e-a289-e6a219b91281",
+      "position": [
+        656,
+        2208
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Which company each guard invoice belongs to, 50 invoices per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Index Guard Invoices').first().json;\nconst cfg = $('Workflow Config').first().json;\nconst cutoff = DateTime.now().setZone(cfg.timezone).startOf('day').minus({ days: cfg.guardLookbackDays || 0 }).toMillis();      // today only, unless guardLookbackDays is set for a recovery run\nconst selected = new Set(ctx.companyIds);\nconst invoiceCompany = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!Array.isArray(r.results)) continue;          // the no-guard-invoices path passes the context item straight through\n  // An invoice with no company comes back as a NO_ASSOCIATIONS_FOUND error entry: it is simply ignored below.\n  const real = (r.errors || []).filter(e => e.subCategory !== 'crm.associations.NO_ASSOCIATIONS_FOUND');\n  if (real.length || (r.numErrors > 0 && !r.errors)) {\n    throw new Error(`Invoice to company read returned errors: ${JSON.stringify(real.length ? real : r.errors)}`);\n  }\n  for (const row of r.results) {\n    const ids = (row.to || []).map(t => String(t.toObjectId)).filter(id => selected.has(id));\n    if (ids.length) invoiceCompany[String(row.from.id)] = ids[0];\n  }\n}\nconst alreadyInvoiced = new Set();\nconst pendingXero = [];\nconst draftInvoiceIds = [];\nfor (const inv of ctx.guardInvoices) {\n  const companyId = invoiceCompany[inv.id];\n  if (!companyId) continue;\n  if (inv.status === 'draft') { draftInvoiceIds.push(inv.id); continue; }\n  if ((inv.status === 'open' || inv.status === 'paid') && inv.createdMs >= cutoff) {\n    alreadyInvoiced.add(companyId);\n    if (inv.status === 'open' && !inv.xeroId) pendingXero.push({ invoiceId: inv.id, companyId });\n  }\n}\nconst outcomes = { ...ctx.outcomes };\nfor (const id of alreadyInvoiced) outcomes[id] = { status: 'already_invoiced', message: 'A Weekly invoice already exists inside the duplicate window' };\nconst { guardInvoices, ...rest } = ctx;\nreturn [{ json: { ...rest, outcomes, pendingXero, draftInvoiceIds, eligibleIds: ctx.companyIds.filter(id => !alreadyInvoiced.has(id)) } }];"
+      },
+      "name": "Apply Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "103fa215-4798-4c87-b95c-96e8f14f5cf7",
+      "position": [
+        880,
+        2288
+      ],
+      "notes": "Per company (invoices with no company are ignored): today's open/paid Weekly invoice = already invoiced (skip). Today's Weekly drafts = leftovers to archive. Open invoices missing a Xero ID = pending for Xero."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7a0b5919-6539-5165-80ec-d5d256e56c3b",
+              "leftValue": "={{ String($json.draftInvoiceIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Leftover Drafts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "da8408fa-2bfe-45a9-96b0-67d0bef1f988",
+      "position": [
+        1104,
+        2288
+      ],
+      "notes": "True: a failed run earlier today left Weekly draft invoices. Archive them before creating new ones."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.draftInvoiceIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Draft Invoice IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "e850a76d-3ceb-456e-bc8d-164b86a49e3d",
+      "position": [
+        1328,
+        2208
+      ],
+      "notes": "FAN-OUT: batches of draft invoice ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/invoices/line_items/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Draft Line Item Links",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "c94e75bb-e5e8-4aad-8d74-403445a24d40",
+      "position": [
+        1552,
+        2208
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Line items hanging off the leftover drafts, so they are archived too."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Apply Guard').first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst lineItemIds = new Set();\nfor (const item of $input.all()) {\n  const r = item.json;\n  // HubSpot reports a record with NO associations as an error entry rather than leaving it out. That is normal, not a failure.\n  const real = (r.errors || []).filter(e => e.subCategory !== 'crm.associations.NO_ASSOCIATIONS_FOUND');\n  if (real.length || (r.numErrors > 0 && !r.errors)) {\n    throw new Error(`Draft invoice line item read returned errors: ${JSON.stringify(real.length ? real : r.errors)}`);\n  }\n  for (const row of r.results || []) {\n    if (row.paging && row.paging.next) {\n      throw new Error(`Leftover draft invoice ${row.from.id} has more line items than one read returns. Delete the draft manually in HubSpot, then re-run.`);\n    }\n    for (const t of row.to || []) lineItemIds.add(String(t.toObjectId));\n  }\n}\nconst chunk = (list) => {\n  const out = [];\n  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));\n  return out;\n};\n// FAN-OUT: line item batches first, then draft invoice batches, so a failure part-way leaves a draft that is found and cleaned again next run.\nreturn [\n  ...chunk([...lineItemIds]).map(ids => ({ json: { objectType: 'line_items', ids } })),\n  ...chunk(ctx.draftInvoiceIds).map(ids => ({ json: { objectType: 'invoices', ids } }))\n];"
+      },
+      "name": "Build Draft Archive Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "ea71c7c8-7f2f-44ba-8bf9-3aad00065da6",
+      "position": [
+        1776,
+        2208
+      ],
+      "notes": "FAN-OUT: archive batches, line items first then invoices."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/{{ $json.objectType }}/batch/archive",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Archive Draft Records",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "id": "f14988c9-21f1-4c12-9783-01962b953b3f",
+      "position": [
+        2000,
+        2208
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Archives one batch (line_items or invoices). Archiving twice is harmless, so retry is safe."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collapses the cleanup batches (or the no-cleanup path) back into the single context item.\nreturn [{ json: $('Apply Guard').first().json }];"
+      },
+      "name": "Guard Cleared",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "2cf7ad91-472f-468b-9991-74c73c0e72e2",
+      "position": [
+        2224,
+        2288
+      ],
+      "notes": "Convergence point: collapses the cleanup batches (or the no-cleanup path) into the single context item."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6d2dc96f-d16e-50ac-bc9c-7947fc71dd3b",
+              "leftValue": "={{ String($json.eligibleIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Eligible Companies?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "71005ffd-c9af-4914-905a-26a534e2316c",
+      "position": [
+        2448,
+        2288
+      ],
+      "notes": "False: every company is already invoiced; go straight to Xero for anything pending."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.eligibleIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Eligible Companies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "874cb0f6-69a9-4d54-996b-7b40176b9233",
+      "position": [
+        2672,
+        2208
+      ],
+      "notes": "FAN-OUT: batches of company ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/companies/{{ $('Workflow Config').first().json.assetObjectType }}/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Company Asset Links",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "db7420fb-5a94-4280-a672-fdcd9b15090e",
+      "position": [
+        2896,
+        2208
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Assets associated to each company, 50 companies per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Guard Cleared').first().json;\nconst outcomes = { ...ctx.outcomes };\nconst issues = [...ctx.issues];\nconst label = (id) => `${(ctx.companies[id] || {}).name || 'Company'} (${id})`;\nconst assetIdsByCompany = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  // HubSpot reports a record with NO associations as an error entry rather than leaving it out. That is normal, not a failure.\n  const real = (r.errors || []).filter(e => e.subCategory !== 'crm.associations.NO_ASSOCIATIONS_FOUND');\n  if (real.length || (r.numErrors > 0 && !r.errors)) {\n    throw new Error(`Company to asset read returned errors: ${JSON.stringify(real.length ? real : r.errors)}`);\n  }\n  for (const row of r.results || []) {\n    const cid = String(row.from.id);\n    if (row.paging && row.paging.next) {\n      issues.push(`${label(cid)}: asset list is longer than one HubSpot read returns - company skipped this week`);\n      outcomes[cid] = { status: 'issue', message: 'asset list longer than one read' };\n      continue;\n    }\n    assetIdsByCompany[cid] = (row.to || []).map(t => String(t.toObjectId));\n  }\n}\nconst assetIds = new Set();\nfor (const cid of ctx.eligibleIds) {\n  if (outcomes[cid]) continue;\n  const ids = assetIdsByCompany[cid] || [];\n  if (!ids.length) { outcomes[cid] = { status: 'no_assets', message: 'Company has no associated assets' }; continue; }\n  ids.forEach(id => assetIds.add(id));\n}\nreturn [{ json: { ...ctx, outcomes, issues, assetIdsByCompany, assetIds: [...assetIds] } }];"
+      },
+      "name": "Collect Asset Links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "a253480a-700a-466d-866d-ca6cbad95b7b",
+      "position": [
+        3120,
+        2208
+      ],
+      "notes": "Collapses the batches. Companies with no assets are finished (no_assets); a company whose list is longer than one read is skipped and reported."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8d62fb2b-11b0-569e-8ee7-7e130ad1df37",
+              "leftValue": "={{ String($json.assetIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Assets To Read?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "ae18e9a9-86be-4cfe-9431-b85e4b4ef54f",
+      "position": [
+        3344,
+        2208
+      ],
+      "notes": "False: nothing to read."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.assetIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Asset IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "b87ec805-e506-4b33-8138-1c173216a283",
+      "position": [
+        3568,
+        2144
+      ],
+      "notes": "FAN-OUT: batches of asset ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/{{ $('Workflow Config').first().json.assetObjectType }}/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ properties: $('Workflow Config').first().json.assetProps, inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Assets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "ba773c92-4c9b-41a7-a30f-6fd0c0162fb7",
+      "position": [
+        3792,
+        2144
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Asset properties, 50 per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Collect Asset Links').first().json;\nconst cfg = $('Workflow Config').first().json;\nconst assetById = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Asset read returned errors: ${JSON.stringify(r.errors)}`);\n  }\n  for (const a of r.results || []) assetById[String(a.id)] = a;\n}\nconst outcomes = { ...ctx.outcomes };\nconst billableByCompany = {};\nconst billableAssetIds = [];\nfor (const cid of ctx.eligibleIds) {\n  if (outcomes[cid]) continue;\n  const billable = (ctx.assetIdsByCompany[cid] || [])\n    .map(id => assetById[id])\n    .filter(a => a && cfg.billableStatuses.includes(String((a.properties || {}).status || '').toLowerCase()))\n    .map(a => ({\n      id: String(a.id),\n      serialNumber: a.properties.serial_number || '',\n      contractNumber: a.properties.contract_number || '',\n      assetNumber: a.properties.asset_number || '',\n      xeroAssetId: a.properties.xero_asset_id || '',\n      xeroItemId: a.properties.xero_item_id || ''\n    }));\n  if (!billable.length) { outcomes[cid] = { status: 'no_active_assets', message: 'No asset is Active or To be Returned' }; continue; }\n  billableByCompany[cid] = billable;\n  billable.forEach(a => billableAssetIds.push(a.id));\n}\nconst { assetIds, assetIdsByCompany, ...rest } = ctx;\nreturn [{ json: { ...rest, outcomes, billableByCompany, billableAssetIds } }];"
+      },
+      "name": "Collect Billable Assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "4e685f6d-cffc-45ca-9816-ee36c1f4d911",
+      "position": [
+        4016,
+        2144
+      ],
+      "notes": "Collapses the batches. Keeps Active / To be Returned assets per company; companies with none are finished (no_active_assets)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4dca7410-0d33-5d43-9ac8-0ffb0aecfa3c",
+              "leftValue": "={{ String($json.billableAssetIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Billable Assets?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "4d2b6807-5022-4094-b298-06cb0cf87297",
+      "position": [
+        4240,
+        2144
+      ],
+      "notes": "False: nothing billable."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.billableAssetIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Asset Link Reads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "775b07d3-a7e6-4822-88cf-f33b7be16518",
+      "position": [
+        4464,
+        2064
+      ],
+      "notes": "FAN-OUT: batches of billable asset ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/{{ $('Workflow Config').first().json.assetObjectType }}/line_items/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Asset Line Item Links",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "253d6b03-d3b6-489c-ad6a-2df6844ab83a",
+      "position": [
+        4688,
+        2064
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Which line items hang off each billable asset, 50 per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Collect Billable Assets').first().json;\nconst outcomes = { ...ctx.outcomes };\nconst issues = [...ctx.issues];\nconst label = (id) => `${(ctx.companies[id] || {}).name || 'Company'} (${id})`;\nconst lineItemsByAsset = {};\nconst pagedAssets = new Set();\nfor (const item of $input.all()) {\n  const r = item.json;\n  // HubSpot reports a record with NO associations as an error entry rather than leaving it out. That is normal, not a failure.\n  const real = (r.errors || []).filter(e => e.subCategory !== 'crm.associations.NO_ASSOCIATIONS_FOUND');\n  if (real.length || (r.numErrors > 0 && !r.errors)) {\n    throw new Error(`Asset to line item read returned errors: ${JSON.stringify(real.length ? real : r.errors)}`);\n  }\n  for (const row of r.results || []) {\n    if (row.paging && row.paging.next) pagedAssets.add(String(row.from.id));\n    lineItemsByAsset[String(row.from.id)] = (row.to || []).map(t => String(t.toObjectId));\n  }\n}\nconst billableByCompany = {};\nconst lineItemIds = new Set();\nfor (const [cid, assets] of Object.entries(ctx.billableByCompany)) {\n  if (assets.some(a => pagedAssets.has(a.id))) {\n    issues.push(`${label(cid)}: an asset has more line items than one HubSpot read returns - company skipped this week`);\n    outcomes[cid] = { status: 'issue', message: 'asset line item list longer than one read' };\n    continue;\n  }\n  const ids = assets.flatMap(a => lineItemsByAsset[a.id] || []);\n  if (!ids.length) { outcomes[cid] = { status: 'no_line_items', message: 'No billable asset has a line item' }; continue; }\n  billableByCompany[cid] = assets;\n  ids.forEach(id => lineItemIds.add(id));\n}\nconst { billableAssetIds, ...rest } = ctx;\nreturn [{ json: { ...rest, outcomes, issues, billableByCompany, lineItemsByAsset, lineItemIds: [...lineItemIds] } }];"
+      },
+      "name": "Collect Line Item Links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "0215aaec-1ede-497c-a265-c68b24e07f8b",
+      "position": [
+        4912,
+        2064
+      ],
+      "notes": "Collapses the batches. A company whose assets have no line items is finished (no_line_items)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "700320c4-2392-5e2e-ba8e-47ef8afed834",
+              "leftValue": "={{ String($json.lineItemIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Line Item Links?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "00959907-a97a-43cd-926f-62f89a3a355d",
+      "position": [
+        5136,
+        2064
+      ],
+      "notes": "False: no line items to read."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.lineItemIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Line Item IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "6b709e76-ac56-40c9-b0ab-cfc1fd717374",
+      "position": [
+        5360,
+        2000
+      ],
+      "notes": "FAN-OUT: batches of source line item ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/line_items/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ properties: $('Workflow Config').first().json.sourceLineItemProps, inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "eb8a53e4-ea1c-44c4-a413-858a94a9704d",
+      "position": [
+        5584,
+        2000
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Source line items (name, price, quantity, product, SKU, description), 50 per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Collect Line Item Links').first().json;\nconst lineItemById = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Line item read returned errors: ${JSON.stringify(r.errors)}`);\n  }\n  for (const li of r.results || []) lineItemById[String(li.id)] = li;\n}\nconst outcomes = { ...ctx.outcomes };\nconst issues = [...ctx.issues];\nconst label = (id) => `${(ctx.companies[id] || {}).name || 'Company'} (${id})`;\nconst plans = {};\nfor (const [cid, assets] of Object.entries(ctx.billableByCompany)) {\n  let fallbackSequence = 1;          // advances only when an asset has no asset_number but has a contract_number\n  const lines = [];\n  try {\n    for (const asset of assets) {\n      const ids = ctx.lineItemsByAsset[asset.id] || [];\n      let assetNumber = asset.assetNumber;\n      if (ids.length && !assetNumber && asset.contractNumber) assetNumber = `${asset.contractNumber}-${fallbackSequence++}`;\n      for (const id of ids) {\n        const li = lineItemById[String(id)];\n        if (!li) throw new Error(`line item ${id} could not be read`);\n        const lp = li.properties || {};\n        const price = parseFloat(lp.price == null ? 0 : lp.price);\n        const quantity = parseFloat(lp.quantity == null ? 1 : lp.quantity);\n        if (!Number.isFinite(price) || !Number.isFinite(quantity)) throw new Error(`line item ${id} has a non-numeric price or quantity`);\n        const parts = [];\n        if (lp.description) parts.push(lp.description);\n        if (asset.contractNumber) parts.push(`Contract: ${asset.contractNumber}`);\n        if (asset.serialNumber) parts.push(`S/N: ${asset.serialNumber}`);\n        const props = { name: lp.name, quantity: '1', price: (price * quantity).toFixed(2), description: parts.join(' | ') };\n        if (lp.hs_product_id) props.hs_product_id = lp.hs_product_id;\n        if (lp.hs_sku) props.hs_sku = lp.hs_sku;\n        if (assetNumber) props.asset_number = assetNumber;\n        if (asset.serialNumber) props.serial_number = asset.serialNumber;\n        if (asset.xeroAssetId) props.xero_asset_id = asset.xeroAssetId;\n        if (asset.xeroItemId) props.xero_item_id = asset.xeroItemId;\n        lines.push(props);\n      }\n    }\n  } catch (e) {\n    issues.push(`${label(cid)}: ${e.message} - company skipped this week`);\n    outcomes[cid] = { status: 'issue', message: e.message };\n    continue;\n  }\n  if (!lines.length) { outcomes[cid] = { status: 'no_line_items', message: 'No billable asset has a line item' }; continue; }\n  plans[cid] = lines;\n}\nconst { billableByCompany, lineItemsByAsset, lineItemIds, ...rest } = ctx;\nreturn [{ json: { ...rest, outcomes, issues, plans, planIds: Object.keys(plans) } }];"
+      },
+      "name": "Build Invoice Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "57856557-73fc-467e-ae28-5cd2540d6457",
+      "position": [
+        5808,
+        2000
+      ],
+      "notes": "Collapses the batches and builds each company's invoice lines: price x quantity as one unit, asset number fallback, contract / serial in the description. A bad company is skipped and reported, not fatal."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2d5f483a-aaaa-5d5f-88d5-8a2dd18943dd",
+              "leftValue": "={{ String($json.planIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Invoices To Create?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "ece01e34-cdf8-4db8-b73d-f9c728d187b6",
+      "position": [
+        6032,
+        2000
+      ],
+      "notes": "False: nothing to invoice."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.planIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Contact Reads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "2c1794f4-a51f-4c55-a76e-d0852629c52e",
+      "position": [
+        6256,
+        1920
+      ],
+      "notes": "FAN-OUT: batches of company ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/companies/contacts/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Company Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "ccc3c8aa-165b-4187-bb87-9deadf029ca1",
+      "position": [
+        6480,
+        1920
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Contacts on each company with association labels, to find the Billing Contact."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Build Invoice Plan').first().json;\nconst cfg = $('Workflow Config').first().json;\nconst issues = [...ctx.issues];\nconst billingByCompany = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  // HubSpot reports a record with NO associations as an error entry rather than leaving it out. That is normal, not a failure.\n  const real = (r.errors || []).filter(e => e.subCategory !== 'crm.associations.NO_ASSOCIATIONS_FOUND');\n  if (real.length || (r.numErrors > 0 && !r.errors)) {\n    throw new Error(`Company to contact read returned errors: ${JSON.stringify(real.length ? real : r.errors)}`);\n  }\n  for (const row of r.results || []) {\n    const cid = String(row.from.id);\n    const hit = (row.to || []).find(t => (t.associationTypes || []).some(a =>\n      cfg.billingContactTypeIds.includes(a.typeId) || String(a.label || '').toLowerCase() === cfg.billingContactLabel));\n    if (hit) billingByCompany[cid] = String(hit.toObjectId);\n    else if (row.paging && row.paging.next) {\n      issues.push(`${(ctx.companies[cid] || {}).name || 'Company'} (${cid}): contact list is longer than one HubSpot read returns - invoice created WITHOUT a billing contact`);\n    }\n  }\n}\nconst start = DateTime.now().setZone(cfg.timezone).startOf('day');\nconst daysAhead = ((cfg.issueWeekday - start.weekday + 7) % 7) || 7;      // always the FOLLOWING Monday, never today\nconst issue = start.plus({ days: daysAhead });\nconst issueDate = issue.toFormat('yyyy-MM-dd');\nconst cat = 'HUBSPOT_DEFINED';\n// Associations are set at creation so a half-built draft can always be found from its company.\nconst invoiceInputs = ctx.planIds.map(cid => {\n  const company = ctx.companies[cid] || {};\n  const weekday = cfg.expiryWeekdays[company.expiryDay];\n  let dueDate = issueDate;\n  if (weekday) {\n    dueDate = issue.plus({ days: (weekday - issue.weekday + 7) % 7 }).toFormat('yyyy-MM-dd');\n  } else {\n    issues.push(`${company.name || 'Company'} (${cid}): Weekly Invoice Expiry Date is ${company.expiryDay ? '\"' + company.expiryDay + '\"' : 'blank'} - due date set to the invoice date`);\n  }\n  const associations = [{ to: { id: cid }, types: [{ associationCategory: cat, associationTypeId: cfg.assocTypeIds.invoiceToCompany }] }];\n  if (billingByCompany[cid]) {\n    associations.push({ to: { id: billingByCompany[cid] }, types: [{ associationCategory: cat, associationTypeId: cfg.assocTypeIds.invoiceToContact }] });\n  }\n  return { properties: { hs_currency: cfg.invoiceCurrency, hs_invoice_date: issueDate, hs_due_date: dueDate, type: cfg.invoiceType }, associations };\n});\nreturn [{ json: { ...ctx, issues, billingByCompany, invoiceInputs, invoiceDate: issueDate } }];"
+      },
+      "name": "Plan Invoice Creates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "c9890103-9036-4b94-8996-73ed6510fa04",
+      "position": [
+        6704,
+        1920
+      ],
+      "notes": "Collapses the batches. Builds one draft invoice per company: AUD, invoice date = the FOLLOWING Monday, due date = that week's Tue-Fri from the company's Weekly Invoice Expiry Date, type Weekly, associated to the company and its Billing Contact."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.invoiceInputs;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize records. The HTTP node below runs once per batch.\nreturn chunks.map(inputs => ({ json: { inputs } }));"
+      },
+      "name": "Chunk Invoice Creates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "f7f7589b-06de-4f73-a065-89527cbedac6",
+      "position": [
+        6928,
+        1920
+      ],
+      "notes": "FAN-OUT: batches of up to 50 invoices to create."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/invoices/batch/create",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.inputs }) }}",
+        "options": {}
+      },
+      "name": "Create Draft Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "notesInFlow": true,
+      "id": "f7942444-78bb-4a09-8e95-cdc8d1b35b48",
+      "position": [
+        7152,
+        1920
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Creates 50 draft invoices per call, already associated to their company. NO retry: a retry after a lost response would duplicate them."
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = $('Plan Invoice Creates').first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst ids = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Invoice batch create failed: ${JSON.stringify(r.errors)}. Drafts created so far are archived by the next run.`);\n  }\n  for (const inv of r.results || []) ids.push(String(inv.id));\n}\nif (ids.length !== plan.invoiceInputs.length) {\n  throw new Error(`Created ${ids.length} of ${plan.invoiceInputs.length} draft invoices. Not continuing; the drafts are archived by the next run.`);\n}\nconst chunks = [];\nfor (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));\n// FAN-OUT: batches of created invoice ids. Which invoice belongs to which company is read back from HubSpot rather than assumed from response order.\nreturn chunks.map(c => ({ json: { ids: c } }));"
+      },
+      "name": "Chunk Created Invoice IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "ca9ff813-48d0-4b39-8a98-013d31a7b628",
+      "position": [
+        7376,
+        1920
+      ],
+      "notes": "Collapses the create responses and checks the count. FAN-OUT: batches of new invoice ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/invoices/companies/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Created Invoice Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "f200ef7b-1e14-435d-a024-583b056220f8",
+      "position": [
+        7600,
+        1920
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Reads back which company each new invoice belongs to (response order is not relied on)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Plan Invoice Creates').first().json;\nconst cfg = $('Workflow Config').first().json;\nconst invoiceByCompany = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Invoice to company read returned errors: ${JSON.stringify(r.errors)}`);\n  }\n  for (const row of r.results || []) {\n    const cid = String(((row.to || [])[0] || {}).toObjectId);\n    if (invoiceByCompany[cid]) throw new Error(`Company ${cid} ended up with two new invoices (${invoiceByCompany[cid]}, ${row.from.id}). Stopping before line items are created.`);\n    invoiceByCompany[cid] = String(row.from.id);\n  }\n}\nconst lineItemInputs = [];\nfor (const cid of ctx.planIds) {\n  if (!invoiceByCompany[cid]) throw new Error(`No newly created invoice found for company ${cid}. Stopping before line items are created; the drafts are archived by the next run.`);\n  for (const properties of ctx.plans[cid]) {\n    lineItemInputs.push({\n      properties,\n      associations: [{ to: { id: invoiceByCompany[cid] }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: cfg.assocTypeIds.lineItemToInvoice }] }]\n    });\n  }\n}\nconst { plans, invoiceInputs, ...rest } = ctx;\nreturn [{ json: { ...rest, invoiceByCompany, lineItemInputs } }];"
+      },
+      "name": "Plan Line Item Creates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "ba6df349-66a0-4a6d-8944-99c04887c6b8",
+      "position": [
+        7824,
+        1920
+      ],
+      "notes": "Collapses the batches. Pairs every new invoice with its company and builds the line items, each already associated to its invoice."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.lineItemInputs;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize records. The HTTP node below runs once per batch.\nreturn chunks.map(inputs => ({ json: { inputs } }));"
+      },
+      "name": "Chunk Line Item Creates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "95b8436f-ecdd-4b90-aa89-84a78272eee6",
+      "position": [
+        8048,
+        1920
+      ],
+      "notes": "FAN-OUT: batches of up to 50 line items to create."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/line_items/batch/create",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.inputs }) }}",
+        "options": {}
+      },
+      "name": "Create Invoice Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "notesInFlow": true,
+      "id": "4f48ac87-081f-4fbe-9150-5158c4ba1e15",
+      "position": [
+        8272,
+        1920
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Creates 50 line items per call, each already associated to its invoice. NO retry (create call)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Plan Line Item Creates').first().json;\nlet created = 0;\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Line item batch create failed: ${JSON.stringify(r.errors)}. The invoices stay drafts and are archived by the next run.`);\n  }\n  created += (r.results || []).length;\n}\nif (created !== ctx.lineItemInputs.length) {\n  throw new Error(`Created ${created} of ${ctx.lineItemInputs.length} invoice line items. Not opening any invoice; the drafts are archived by the next run.`);\n}\nreturn [{ json: { ...ctx, openInvoiceIds: Object.values(ctx.invoiceByCompany), lineItemsCreated: created } }];"
+      },
+      "name": "Collect Created Line Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "79a2d0cf-047e-46f0-a8aa-38614d60cb08",
+      "position": [
+        8496,
+        1920
+      ],
+      "notes": "Collapses the batches. Fails (leaving drafts that the next run archives) if any line item failed or the count is short. Nothing is opened until every line item exists."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.openBatchSize;\nconst ids = ctx.openInvoiceIds;\nconst chunks = [];\nfor (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));\n// FAN-OUT: one item per batch of invoices to open. draft -> open is a flag write, so it is safe to retry.\nreturn chunks.map(c => ({ json: { inputs: c.map(id => ({ id, properties: { hs_invoice_status: 'open' } })) } }));"
+      },
+      "name": "Chunk Invoice Opens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "2e30e1e0-762a-464c-bc05-45a602bd5df9",
+      "position": [
+        8720,
+        1920
+      ],
+      "notes": "FAN-OUT: batches of invoices to move draft -> open."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/invoices/batch/update",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.inputs }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "name": "Open Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notesInFlow": true,
+      "id": "b89ee504-fcbd-4d3f-9353-e55e154f8993",
+      "position": [
+        8944,
+        1920
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Moves openBatchSize invoices per call from draft to open, one call every 2 s. A flag write, so retry is safe (5 s between tries). A failed batch no longer stops the run: Confirm Opened Invoices reports it."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Collect Created Line Items').first().json;\nconst chunks = $('Chunk Invoice Opens').all();      // one item per batch, in the order the HTTP node ran them\nconst openedIds = new Set();\nconst errors = [];\nconst results = $input.all();\nfor (let i = 0; i < results.length; i++) {\n  const item = results[i];\n  const r = item.json || {};\n  // A batch that errored comes back as { error: ... } (onError: continueRegularOutput). A partial batch comes back with results AND errors.\n  for (const row of (r.results || [])) openedIds.add(String(row.id));\n  if (r.error || r.numErrors > 0 || (r.errors && r.errors.length)) {\n    const idx = item.pairedItem && item.pairedItem.item !== undefined ? item.pairedItem.item : i;\n    const sent = (((chunks[idx] || {}).json || {}).inputs || []).length;\n    const detail = r.error ? (typeof r.error === 'string' ? r.error : (r.error.message || JSON.stringify(r.error))) : JSON.stringify(r.errors);\n    errors.push(`batch ${idx + 1} (${sent} invoices): ${String(detail).slice(0, 300)}`);\n  }\n}\nconst outcomes = { ...ctx.outcomes };\nconst issues = [...(ctx.issues || [])];\nconst createdInvoices = [];\nlet failed = 0;\nfor (const [companyId, invoiceId] of Object.entries(ctx.invoiceByCompany)) {\n  if (openedIds.has(String(invoiceId))) {\n    createdInvoices.push({ invoiceId, companyId });\n    outcomes[companyId] = { status: 'invoiced', invoiceId, message: ctx.billingByCompany[companyId] ? 'Invoice opened with billing contact' : 'Invoice opened - NO billing contact found' };\n  } else {\n    failed++;\n    const name = (ctx.companies[companyId] || {}).name || 'Company';\n    const message = `${name} (${companyId}): invoice ${invoiceId} could not be opened and is still a draft. Re-run the same day: drafts are archived and rebuilt.`;\n    outcomes[companyId] = { status: 'issue', invoiceId, message };\n    issues.push(message);\n  }\n}\nif (failed) issues.push(`HubSpot rejected ${errors.length} open batch(es): ${errors.join(' | ')}`);\nreturn [{ json: { ...ctx, outcomes, issues, createdInvoices } }];\n"
+      },
+      "name": "Confirm Opened Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "974085e9-4aec-4f3d-b3df-486dfe6a1dbe",
+      "position": [
+        9168,
+        1920
+      ],
+      "notes": "Collapses the batches and checks every invoice was updated. Records the result per company."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst seen = new Set();\nconst xeroCandidates = [];\n// Invoices created this run, plus open Weekly invoices from the duplicate window that never reached Xero.\nfor (const x of [...(ctx.createdInvoices || []), ...(ctx.pendingXero || [])]) {\n  if (seen.has(x.invoiceId)) continue;\n  seen.add(x.invoiceId);\n  xeroCandidates.push(x);\n}\nreturn [{ json: { companies: ctx.companies, outcomes: ctx.outcomes, issues: ctx.issues, xeroCandidates, createdCount: (ctx.createdInvoices || []).length } }];"
+      },
+      "name": "Gather Xero Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "a1456621-36d3-4ffa-80ac-8a2e8b2381db",
+      "position": [
+        9392,
+        2256
+      ],
+      "notes": "Convergence point for every path. Xero candidates = invoices created this run + today's open invoices that never reached Xero."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2f36795a-dbd4-5353-a895-aecec0591eec",
+              "leftValue": "={{ String($json.xeroCandidates.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Invoices For Xero?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "9a27aeae-b139-4f0a-96de-35cc38dd3454",
+      "position": [
+        9616,
+        2256
+      ],
+      "notes": "False: nothing to send to Xero."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.xeroCandidates.map(c => c.invoiceId);\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Xero Invoice IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "b25c97a4-4e53-4f42-b906-cb96e90d758e",
+      "position": [
+        9840,
+        2192
+      ],
+      "notes": "FAN-OUT: batches of invoice ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/invoices/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ properties: $('Workflow Config').first().json.invoiceDetailProps, inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Xero Invoice Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "61ab9404-2689-493d-a8e5-ea2fb22e6418",
+      "position": [
+        10064,
+        2192
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Invoice number, PO, owner, dates and the Xero dedup flag, 50 invoices per call (replaces the per-invoice reads)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Gather Xero Invoices').first().json;\nconst byId = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Invoice read returned errors: ${JSON.stringify(r.errors)}`);\n  }\n  for (const inv of r.results || []) byId[String(inv.id)] = inv;\n}\nconst issues = [...ctx.issues];\nconst xeroInvoices = [];\nlet alreadyInXero = 0;\nfor (const cand of ctx.xeroCandidates) {\n  const inv = byId[cand.invoiceId];\n  const name = (ctx.companies[cand.companyId] || {}).name || 'Company';\n  if (!inv) { issues.push(`${name} (${cand.companyId}): invoice ${cand.invoiceId} could not be read back from HubSpot - not sent to Xero`); continue; }\n  const p = inv.properties || {};\n  if (String(p.xero_invoice_id || '').trim()) { alreadyInXero++; continue; }          // dedup flag: already in Xero\n  const status = String(p.hs_invoice_status || '').toLowerCase();\n  if (status !== 'open') { issues.push(`${name} (${cand.companyId}): invoice ${cand.invoiceId} is ${status || 'unknown'}, not open - not sent to Xero`); continue; }\n  xeroInvoices.push({\n    invoiceId: cand.invoiceId, companyId: cand.companyId, number: p.hs_number || '', po: p.hs_purchase_order_number || '',\n    ownerId: p.hubspot_owner_id || '', date: String(p.hs_invoice_date || p.hs_createdate || '').slice(0, 10), dueDate: String(p.hs_due_date || '').slice(0, 10)\n  });\n}\nreturn [{ json: { ...ctx, issues, xeroInvoices, alreadyInXero } }];"
+      },
+      "name": "Index Invoice Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "93c3ab74-fcde-4524-808c-4d0e9d45e656",
+      "position": [
+        10288,
+        2192
+      ],
+      "notes": "Collapses the batches. Drops invoices already in Xero (xero_invoice_id set) or not open."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "913a91c3-5c71-5a85-9c1c-6d28becb47a2",
+              "leftValue": "={{ String($json.xeroInvoices.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Invoices Need Xero?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "ad47a635-9603-4d7e-bdc9-1d6293597227",
+      "position": [
+        10512,
+        2192
+      ],
+      "notes": "False: everything is already in Xero."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.xeroInvoices.map(i => i.invoiceId);\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Invoice Line Item Link Reads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "ad14568e-d893-487c-bf59-09bacc9c12d4",
+      "position": [
+        10736,
+        2112
+      ],
+      "notes": "FAN-OUT: batches of invoice ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/associations/{{ $('Workflow Config').first().json.apiVersion }}/invoices/line_items/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Invoice Line Item Links",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "98f34f86-7349-4825-ad56-0c88a618aa26",
+      "position": [
+        10960,
+        2112
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Line items on each invoice, 50 invoices per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Index Invoice Details').first().json;\nconst lineItemIdsByInvoice = {};\nconst pagedInvoiceIds = [];\nconst all = new Set();\nfor (const item of $input.all()) {\n  const r = item.json;\n  // HubSpot reports a record with NO associations as an error entry rather than leaving it out. That is normal, not a failure.\n  const real = (r.errors || []).filter(e => e.subCategory !== 'crm.associations.NO_ASSOCIATIONS_FOUND');\n  if (real.length || (r.numErrors > 0 && !r.errors)) {\n    throw new Error(`Invoice to line item read returned errors: ${JSON.stringify(real.length ? real : r.errors)}`);\n  }\n  for (const row of r.results || []) {\n    const inv = String(row.from.id);\n    if (row.paging && row.paging.next) pagedInvoiceIds.push(inv);\n    const ids = (row.to || []).map(t => String(t.toObjectId));\n    lineItemIdsByInvoice[inv] = ids;\n    ids.forEach(id => all.add(id));\n  }\n}\nreturn [{ json: { ...ctx, lineItemIdsByInvoice, pagedInvoiceIds, lineItemIds: [...all] } }];"
+      },
+      "name": "Collect Invoice Line Items Links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "2d992f84-32e9-43f8-8a0a-372f7dd8d7a0",
+      "position": [
+        11184,
+        2112
+      ],
+      "notes": "Collapses the batches into invoice -> line item ids."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2ad64df1-38f4-571c-92f0-f9d95de0b754",
+              "leftValue": "={{ String($json.lineItemIds.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Xero Line Items To Read?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "4620a556-2721-4bb1-a3bc-d9c05b6e56f0",
+      "position": [
+        11408,
+        2112
+      ],
+      "notes": "False: no line items anywhere; the invoices are reported as failures."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst size = $('Workflow Config').first().json.batchSize;\nconst list = ctx.lineItemIds;\nconst chunks = [];\nfor (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));\n// FAN-OUT: one item per batch of up to batchSize ids. The HTTP node below runs once per batch.\nreturn chunks.map(ids => ({ json: { ids } }));"
+      },
+      "name": "Chunk Xero Line Item IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "9ce418b5-f881-425b-b878-c117ab50a0fc",
+      "position": [
+        11632,
+        2064
+      ],
+      "notes": "FAN-OUT: batches of line item ids."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/line_items/batch/read",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ properties: $('Workflow Config').first().json.xeroLineItemProps, inputs: $json.ids.map(id => ({ id: String(id) })) }) }}",
+        "options": {}
+      },
+      "name": "Read Xero Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "bede7d2e-bc0a-4e02-a1d7-ac535d4e3dfe",
+      "position": [
+        11856,
+        2064
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Line item amount, name, asset number, serial number, 50 per call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Collect Invoice Line Items Links').first().json;\nconst cfg = $('Workflow Config').first().json;\nconst lineItemById = {};\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!Array.isArray(r.results)) continue;             // the no-line-items path passes the context item straight through\n  if (r.numErrors > 0 || (r.errors && r.errors.length)) {\n    throw new Error(`Line item read returned errors: ${JSON.stringify(r.errors)}`);\n  }\n  for (const li of r.results) lineItemById[String(li.id)] = li;\n}\nconst prepared = [];\nconst failures = [];\nfor (const inv of ctx.xeroInvoices) {\n  const company = ctx.companies[inv.companyId] || {};\n  const ownerId = inv.ownerId || company.ownerId || null;\n  const base = { hubspotInvoiceId: String(inv.invoiceId), invoiceNumber: inv.number || null, ownerId, purchaseOrderNumber: inv.po || '' };\n  const fail = (msg) => failures.push({ ...base, stage: 'Prepare Xero invoice', errorMessage: msg });\n  if (!company.xeroContactId) { fail(`${company.name || 'Company'} has no xero_customer_id on its HubSpot company record, so the invoice cannot be created in Xero.`); continue; }\n  if (ctx.pagedInvoiceIds.includes(inv.invoiceId)) { fail('Invoice has more line items than one HubSpot read returns.'); continue; }\n  const ids = ctx.lineItemIdsByInvoice[inv.invoiceId] || [];\n  if (!ids.length) { fail('HubSpot invoice has no line items.'); continue; }\n  const region = String(company.state || '').trim().toUpperCase();\n  const accountCode = cfg.stateAccounts[region] || cfg.defaultAccountId;\n  try {\n    const lineItems = ids.map(id => {\n      const li = lineItemById[String(id)];\n      if (!li) throw new Error(`Line item ${id} could not be read from HubSpot`);\n      const p = li.properties || {};\n      const amount = parseFloat(p.amount != null ? p.amount : parseFloat(p.price) * parseFloat(p.quantity == null ? 1 : p.quantity));\n      if (!Number.isFinite(amount)) throw new Error(`Line item ${id} has a non-numeric amount`);\n      const first = [p.asset_number, 'Weekly Invoice', p.name].filter(Boolean).join(' | ');\n      const description = p.serial_number ? `${first}\\nSerial Number ${p.serial_number}` : first;\n      const line = { Description: description, Quantity: 1, UnitAmount: amount, AccountCode: accountCode, LineAmount: amount };\n      if (p.asset_number) line.ItemCode = p.asset_number;\n      return line;\n    });\n    const xeroInvoice = {\n      Type: 'ACCREC', Contact: { ContactID: company.xeroContactId }, Date: inv.date, DueDate: inv.dueDate,\n      InvoiceNumber: inv.number, Reference: inv.po, Status: cfg.invoiceStatus, CurrencyCode: cfg.currency,\n      BrandingThemeID: cfg.brandingThemeId, LineItems: lineItems\n    };\n    prepared.push({ ...base, xeroInvoice });\n  } catch (e) {\n    fail(e.message);\n  }\n}\nconst { xeroInvoices, lineItemIdsByInvoice, lineItemIds, pagedInvoiceIds, ...rest } = ctx;\nreturn [{ json: { ...rest, prepared, failures } }];"
+      },
+      "name": "Build Xero Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "d3432d94-4812-49fd-bc5f-334671d5c977",
+      "position": [
+        12080,
+        2112
+      ],
+      "notes": "Collapses the batches and builds the complete Xero invoice for each HubSpot invoice (state -> rental income account). Invoices that cannot be built are returned as failures, never silently dropped."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aaf6d692-d49b-542d-98c3-868113c9e5bc",
+              "leftValue": "={{ String($json.prepared.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Any Prepared Invoices?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notesInFlow": true,
+      "id": "f0f28825-2351-41ea-a9fd-776b28421924",
+      "position": [
+        12304,
+        2048
+      ],
+      "notes": "False: nothing to send; go to the summary."
+    },
+    {
+      "parameters": {
+        "jsCode": "// One item per prepared Xero invoice, in the shape the batch loop below expects.\nreturn $input.first().json.prepared.map(p => ({ json: p }));"
+      },
+      "name": "Split Prepared Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "d8595510-3357-4eec-9a4a-32d65d8066f0",
+      "position": [
+        12528,
+        2144
+      ],
+      "notes": "FAN-OUT: one item per prepared invoice for the Xero batch loop (unchanged phase from the original workflow)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const size = $('Workflow Config').first().json.batchSize;\nconst failures = $input.first().json.failures;\nconst taskInputs = failures.map(p => {\n  const properties = {\n    hs_task_subject: `Xero sync error - Invoice ${p.purchaseOrderNumber || p.invoiceNumber || p.hubspotInvoiceId}`,\n    hs_task_body: `An error occurred while preparing this invoice for Xero.\\n\\nFailed step: ${p.stage}\\nHubSpot invoice ID: ${p.hubspotInvoiceId}\\nInvoice number: ${p.invoiceNumber ?? ''}\\nPO Number: ${p.purchaseOrderNumber ?? ''}\\nError: ${String(p.errorMessage).slice(0, 2000)}\\n\\nThe HubSpot invoice is open but not in Xero. Fix the cause; a re-run the same day retries it automatically.`,\n    hs_task_status: 'NOT_STARTED',\n    hs_task_priority: 'HIGH',\n    hs_task_type: 'TODO',\n    hs_timestamp: new Date().toISOString()\n  };\n  if (p.ownerId) properties.hubspot_owner_id = p.ownerId;\n  return { properties };\n});\nconst chunks = [];\nfor (let i = 0; i < taskInputs.length; i += size) chunks.push(taskInputs.slice(i, i + size));\n// FAN-OUT: one item per batch of tasks. Emits nothing when there are no failures, which simply ends this side branch.\nreturn chunks.map(inputs => ({ json: { inputs } }));"
+      },
+      "name": "Build Preflight Error Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "be924228-2c46-40d7-921f-a88aa77f2d5a",
+      "position": [
+        12304,
+        2336
+      ],
+      "notes": "Turns invoices that could not be prepared into HubSpot task inputs (these used to be dropped silently). Emits nothing when there are none."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.apiBase }}/crm/objects/{{ $('Workflow Config').first().json.apiVersion }}/tasks/batch/create",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.inputs }) }}",
+        "options": {}
+      },
+      "name": "Create Preflight Error Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "notesInFlow": true,
+      "id": "10ccc6d0-993b-432c-8003-53fbe5616b8e",
+      "position": [
+        12528,
+        2336
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "One HubSpot call per batch of prepare failures."
+    },
+    {
+      "parameters": {
+        "batchSize": "={{ $('Workflow Config').first().json.xeroBatchSize }}",
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        12752,
+        2144
+      ],
+      "id": "602c06f4-cf44-4392-81e2-307859a0b571",
+      "name": "Loop Over Xero Batches",
+      "notesInFlow": true,
+      "notes": "PHASE 2 (create) - one pass per batch of invoices (size from Workflow Config). Output 1 = this batch, Output 0 (done) = finished."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns this batch of prepared invoices into ONE Xero request body.\nconst MAX_BATCH = 100;           // HubSpot batch update / task-create endpoints accept at most 100 records\nconst MAX_BYTES = 3000000;       // Xero rejects a POST over 3.5 MB; stay clear of it\n\nconst items = $input.all();\nif (!items.length) throw new Error('Build Xero Batch Payload received no invoices');\nif (items.length > MAX_BATCH) {\n  throw new Error(`Batch of ${items.length} exceeds ${MAX_BATCH}. Lower xeroBatchSize in Workflow Config.`);\n}\n\n// Drop null / empty values - a blank field can make Xero reject an otherwise valid invoice.\nconst clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined && v !== ''));\n\nconst payload = { Invoices: items.map((i) => clean(i.json.xeroInvoice)) };\n\nconst bytes = JSON.stringify(payload).length;\nif (bytes > MAX_BYTES) {\n  throw new Error(`Batch payload is ${bytes} bytes (limit ~3.5 MB). Lower xeroBatchSize in Workflow Config.`);\n}\n\n// What we sent, in the same order - used to match Xero's response back to HubSpot records.\nconst submitted = items.map((i) => ({\n  hubspotInvoiceId: String(i.json.hubspotInvoiceId),\n  invoiceNumber: i.json.invoiceNumber ?? null,\n  ownerId: i.json.ownerId ?? null,\n  purchaseOrderNumber: i.json.purchaseOrderNumber ?? '',\n}));\n\nconst batchNumber = $runIndex + 1;\nconsole.log(`Batch ${batchNumber}: ${items.length} invoice(s), ${bytes} bytes`);\n\nreturn [{ json: { batchNumber, count: items.length, payloadBytes: bytes, payload, submitted } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12976,
+        2144
+      ],
+      "id": "b3f515cd-4656-4063-b89a-ac23aee0a58b",
+      "name": "Build Xero Batch Payload",
+      "notesInFlow": true,
+      "notes": "Collapses the batch to a single item: { payload, submitted }."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/api.xro/2.0/Invoices",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "summarizeErrors",
+              "value": "false"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "={{ $('Workflow Config').first().json.xeroTenantId }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $execution.id }}-batch-{{ $json.batchNumber }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        13200,
+        2144
+      ],
+      "id": "43c9fd1c-a129-404d-8d17-25d656c3135d",
+      "name": "Create Xero Invoices (Batch)",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "ONE call for the whole batch. summarizeErrors=false => HTTP 200 even if individual invoices are rejected; 'Parse Xero Batch Results' checks each one. No retryOnFail: this is a create."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Xero returns HTTP 200 for a batch even when individual invoices were rejected, so every invoice\n// is checked on its own. Results are matched to HubSpot records by position AND invoice number.\nconst ZERO_GUID = '00000000-0000-0000-0000-000000000000';\nconst build = $('Build Xero Batch Payload').first().json;\nconst submitted = build.submitted;\nconst resp = $input.first().json;\n\nconst failAll = (stage, errorMessage) => [{\n  json: {\n    batchNumber: build.batchNumber,\n    okInvoices: [],\n    failures: submitted.map((s) => ({ ...s, stage, errorMessage })),\n  },\n}];\n\n// 1. The whole request failed (network, auth, 4xx/5xx, timeout)\nif (resp.error || !Array.isArray(resp.Invoices)) {\n  const e = resp.error;\n  const detail = typeof e === 'string' ? e : [e?.message, e?.description].filter(Boolean).join(' - ') || 'no Invoices array in the response';\n  return failAll('Xero create (whole batch)', `Xero batch request failed: ${detail}. No invoices from this batch were written to HubSpot.`);\n}\n\n// 2. Positional mapping is only safe if the counts and invoice numbers line up\nconst returned = resp.Invoices;\nconst numberMismatch = returned.some((inv, i) => submitted[i] && submitted[i].invoiceNumber && inv.InvoiceNumber && inv.InvoiceNumber !== submitted[i].invoiceNumber);\nif (returned.length !== submitted.length || numberMismatch) {\n  return failAll('Xero create (response mismatch)',\n    `Xero returned ${returned.length} invoice(s) for ${submitted.length} submitted (or invoice numbers did not line up), so results cannot be matched safely. Some invoices may exist in Xero - check Xero for this batch before re-running. Nothing was written to HubSpot.`);\n}\n\n// 3. Per-invoice outcome\nconst okInvoices = [];\nconst failures = [];\nreturned.forEach((inv, i) => {\n  const s = submitted[i];\n  const errs = (inv.ValidationErrors || []).map((e) => e.Message).filter(Boolean);\n  const created = inv.InvoiceID && inv.InvoiceID !== ZERO_GUID && inv.StatusAttributeString !== 'ERROR' && !inv.HasErrors;\n  if (created) {\n    okInvoices.push({ ...s, xeroInvoiceId: inv.InvoiceID });\n  } else {\n    failures.push({ ...s, stage: 'Xero create', errorMessage: errs.length ? errs.join(' | ') : `Xero rejected the invoice (status ${inv.StatusAttributeString ?? 'unknown'})` });\n  }\n});\n\nconsole.log(`Batch ${build.batchNumber}: ${okInvoices.length} created, ${failures.length} rejected`);\nreturn [{ json: { batchNumber: build.batchNumber, okInvoices, failures } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13424,
+        2144
+      ],
+      "id": "40c31956-ac89-4a6b-b4c2-51553345bf32",
+      "name": "Parse Xero Batch Results",
+      "notesInFlow": true,
+      "notes": "Checks every invoice individually, guards the count and invoice-number mapping, outputs { okInvoices, failures }."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a4731ae4-760e-4b6f-939d-ec61194a78dd",
+              "leftValue": "={{ String($json.okInvoices.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        13648,
+        2144
+      ],
+      "id": "cbafd547-9dfb-4418-9174-78f449fe43f7",
+      "name": "Any Invoices Created?",
+      "notesInFlow": true,
+      "notes": "TRUE: write the Xero IDs back to HubSpot. FALSE: nothing was created, go straight to the error tasks."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/0-53/batch/update",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.okInvoices.map((o) => ({ id: o.hubspotInvoiceId, properties: { xero_invoice_id: o.xeroInvoiceId } })) }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        13872,
+        2064
+      ],
+      "id": "3f1773d8-a5bc-4ab0-8022-7be658b628d3",
+      "name": "Write Xero IDs to HubSpot (Batch)",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Sets xero_invoice_id on every invoice just created - this is the dedup flag. Idempotent (same values on retry), so retryOnFail is safe here. 'Build Batch Error Tasks' checks the result."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gathers every failure from this batch into HubSpot task inputs (one per invoice, assigned to the invoice owner).\n// Input is EITHER the write-back response (when invoices were created) OR the parsed result itself (when none were).\nconst parsed = $('Parse Xero Batch Results').first().json;\nconst incoming = $input.first().json;\nconst ranWriteBack = !Array.isArray(incoming.okInvoices);\n\nconst problems = parsed.failures.map((f) => ({ ...f }));\n\nif (ranWriteBack && parsed.okInvoices.length) {\n  let missed = [];\n  let reason = '';\n  if (incoming.error) {\n    const e = incoming.error;\n    reason = typeof e === 'string' ? e : [e?.message, e?.description].filter(Boolean).join(' - ') || 'unknown error';\n    missed = parsed.okInvoices;\n  } else {\n    const done = new Set((incoming.results || []).map((r) => String(r.id)));\n    missed = parsed.okInvoices.filter((o) => !done.has(String(o.hubspotInvoiceId)));\n    reason = incoming.errors?.[0]?.message ?? 'HubSpot did not confirm the update';\n  }\n  for (const o of missed) {\n    problems.push({\n      ...o,\n      stage: 'HubSpot write-back',\n      errorMessage: `The Xero invoice WAS created (Xero InvoiceID ${o.xeroInvoiceId}) but xero_invoice_id could not be saved on the HubSpot invoice: ${reason}. Set it manually before the next run or the invoice may be created twice.`,\n    });\n  }\n}\n\nconst taskInputs = problems.map((p) => {\n  const properties = {\n    hs_task_subject: `Xero sync error - Invoice ${p.purchaseOrderNumber || p.invoiceNumber || p.hubspotInvoiceId}`,\n    hs_task_body: `An error occurred while syncing this invoice to Xero.\\n\\nFailed step: ${p.stage}\\nHubSpot invoice ID: ${p.hubspotInvoiceId}\\nInvoice number: ${p.invoiceNumber ?? ''}\\nPO Number: ${p.purchaseOrderNumber ?? ''}\\nBatch: ${parsed.batchNumber}\\nError: ${String(p.errorMessage).slice(0, 2000)}`,\n    hs_task_status: 'NOT_STARTED',\n    hs_task_priority: 'HIGH',\n    hs_task_type: 'TODO',\n    hs_timestamp: new Date().toISOString(),\n  };\n  if (p.ownerId) properties.hubspot_owner_id = p.ownerId;\n  return { properties };\n});\n\nreturn [{ json: {\n  batchNumber: parsed.batchNumber,\n  created: parsed.okInvoices.length - problems.filter((p) => p.stage === 'HubSpot write-back').length,\n  failed: problems.length,\n  taskInputs,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14096,
+        2144
+      ],
+      "id": "e1eee4df-5a27-443e-8fe4-54fab1d16fc9",
+      "name": "Build Batch Error Tasks",
+      "notesInFlow": true,
+      "notes": "Always outputs exactly one item so the loop can continue. taskInputs may be empty."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "386919a2-b47f-482d-a4ea-eb227a1b6046",
+              "leftValue": "={{ String($json.taskInputs.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        14320,
+        2144
+      ],
+      "id": "23d9c4fc-2499-4b4e-8873-3f6a16b59293",
+      "name": "Any Error Tasks?",
+      "notesInFlow": true,
+      "notes": "TRUE: create the tasks. FALSE: skip straight to the wait."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/tasks/batch/create",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.taskInputs }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        14544,
+        2064
+      ],
+      "id": "5a949619-44af-47df-8f84-13958c349373",
+      "name": "Create Error Tasks (Batch)",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "One HubSpot call for all of this batch's failures. Deliberately no onError override: if the tasks cannot be created the run should fail loudly (Error Workflow) rather than hide the failures. Re-running is safe - invoices that already have xero_invoice_id are skipped."
+    },
+    {
+      "parameters": {
+        "amount": "={{ $('Workflow Config').first().json.batchWaitSeconds }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        14768,
+        2208
+      ],
+      "id": "d12f4957-d879-403b-be41-ba1f8efaa471",
+      "name": "Wait Between Batches",
+      "webhookId": "544f0fac-bc42-4aaa-8edf-6bcb99412087",
+      "notesInFlow": true,
+      "notes": "Throttle between batches (seconds from Workflow Config), then back to the batch loop."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Gather Xero Invoices').first().json;\nconst counts = {};\nfor (const o of Object.values(ctx.outcomes)) counts[o.status] = (counts[o.status] || 0) + 1;\nconsole.log(`HubSpot: ${JSON.stringify(counts)}. Invoices considered for Xero: ${ctx.xeroCandidates.length}.`);\nif (ctx.issues.length) {\n  const list = ctx.issues.slice(0, 20).map(i => `- ${i}`).join('\\n');\n  throw new Error(`Weekly invoicing finished with ${ctx.issues.length} issue(s) that need a person (everything else completed). HubSpot: ${JSON.stringify(counts)}\\n${list}`);\n}\nreturn [{ json: { counts, invoicesConsideredForXero: ctx.xeroCandidates.length } }];"
+      },
+      "name": "Run Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notesInFlow": true,
+      "id": "37d1107a-c86e-46eb-925a-52ffbc4e1aab",
+      "position": [
+        12976,
+        1952
+      ],
+      "notes": "Last step on every path. Logs the counts; throws if any company or invoice needs a person so the Error Workflow alerts once, after everything else has finished."
+    }
+  ],
+  "pinData": {
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2026-10-25T10:10:50.000+08:00",
+          "Readable date": "October 25th 2026, 10:10:50 am",
+          "Readable time": "10:10:50 am",
+          "Day of week": "Sunday",
+          "Year": "2026",
+          "Month": "October",
+          "Day of month": "25",
+          "Hour": "10",
+          "Minute": "10",
+          "Second": "50",
+          "Timezone": "Australia/Perth (UTC+08:00)"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Search Companies With Delivered Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Companies With Delivered Assets": {
+      "main": [
+        [
+          {
+            "node": "Collect Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Companies": {
+      "main": [
+        [
+          {
+            "node": "Search Recent Weekly Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Recent Weekly Invoices": {
+      "main": [
+        [
+          {
+            "node": "Index Guard Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Index Guard Invoices": {
+      "main": [
+        [
+          {
+            "node": "Any Guard Invoices?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Guard Invoices?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Guard Invoice IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apply Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Guard Invoice IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Guard Invoice Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Guard Invoice Companies": {
+      "main": [
+        [
+          {
+            "node": "Apply Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Guard": {
+      "main": [
+        [
+          {
+            "node": "Leftover Drafts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leftover Drafts?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Draft Invoice IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guard Cleared",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Draft Invoice IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Draft Line Item Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Draft Line Item Links": {
+      "main": [
+        [
+          {
+            "node": "Build Draft Archive Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Draft Archive Batches": {
+      "main": [
+        [
+          {
+            "node": "Archive Draft Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Draft Records": {
+      "main": [
+        [
+          {
+            "node": "Guard Cleared",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard Cleared": {
+      "main": [
+        [
+          {
+            "node": "Any Eligible Companies?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Eligible Companies?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Eligible Companies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Eligible Companies": {
+      "main": [
+        [
+          {
+            "node": "Read Company Asset Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Company Asset Links": {
+      "main": [
+        [
+          {
+            "node": "Collect Asset Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Asset Links": {
+      "main": [
+        [
+          {
+            "node": "Any Assets To Read?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Assets To Read?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Asset IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Asset IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Assets": {
+      "main": [
+        [
+          {
+            "node": "Collect Billable Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Billable Assets": {
+      "main": [
+        [
+          {
+            "node": "Any Billable Assets?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Billable Assets?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Asset Link Reads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Asset Link Reads": {
+      "main": [
+        [
+          {
+            "node": "Read Asset Line Item Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Asset Line Item Links": {
+      "main": [
+        [
+          {
+            "node": "Collect Line Item Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Line Item Links": {
+      "main": [
+        [
+          {
+            "node": "Any Line Item Links?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Line Item Links?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Line Item IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Line Item IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Line Items": {
+      "main": [
+        [
+          {
+            "node": "Build Invoice Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Invoice Plan": {
+      "main": [
+        [
+          {
+            "node": "Any Invoices To Create?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Invoices To Create?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Contact Reads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Contact Reads": {
+      "main": [
+        [
+          {
+            "node": "Read Company Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Company Contacts": {
+      "main": [
+        [
+          {
+            "node": "Plan Invoice Creates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Invoice Creates": {
+      "main": [
+        [
+          {
+            "node": "Chunk Invoice Creates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Invoice Creates": {
+      "main": [
+        [
+          {
+            "node": "Create Draft Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Draft Invoices": {
+      "main": [
+        [
+          {
+            "node": "Chunk Created Invoice IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Created Invoice IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Created Invoice Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Created Invoice Companies": {
+      "main": [
+        [
+          {
+            "node": "Plan Line Item Creates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Line Item Creates": {
+      "main": [
+        [
+          {
+            "node": "Chunk Line Item Creates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Line Item Creates": {
+      "main": [
+        [
+          {
+            "node": "Create Invoice Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Invoice Line Items": {
+      "main": [
+        [
+          {
+            "node": "Collect Created Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Created Line Items": {
+      "main": [
+        [
+          {
+            "node": "Chunk Invoice Opens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Invoice Opens": {
+      "main": [
+        [
+          {
+            "node": "Open Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open Invoices": {
+      "main": [
+        [
+          {
+            "node": "Confirm Opened Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Opened Invoices": {
+      "main": [
+        [
+          {
+            "node": "Gather Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gather Xero Invoices": {
+      "main": [
+        [
+          {
+            "node": "Any Invoices For Xero?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Invoices For Xero?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Xero Invoice IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Xero Invoice IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Xero Invoice Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Xero Invoice Details": {
+      "main": [
+        [
+          {
+            "node": "Index Invoice Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Index Invoice Details": {
+      "main": [
+        [
+          {
+            "node": "Any Invoices Need Xero?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Invoices Need Xero?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Invoice Line Item Link Reads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Invoice Line Item Link Reads": {
+      "main": [
+        [
+          {
+            "node": "Read Invoice Line Item Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Invoice Line Item Links": {
+      "main": [
+        [
+          {
+            "node": "Collect Invoice Line Items Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Invoice Line Items Links": {
+      "main": [
+        [
+          {
+            "node": "Any Xero Line Items To Read?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Xero Line Items To Read?": {
+      "main": [
+        [
+          {
+            "node": "Chunk Xero Line Item IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Xero Line Item IDs": {
+      "main": [
+        [
+          {
+            "node": "Read Xero Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Xero Line Items": {
+      "main": [
+        [
+          {
+            "node": "Build Xero Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Xero Invoices": {
+      "main": [
+        [
+          {
+            "node": "Any Prepared Invoices?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Preflight Error Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Prepared Invoices?": {
+      "main": [
+        [
+          {
+            "node": "Split Prepared Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Preflight Error Tasks": {
+      "main": [
+        [
+          {
+            "node": "Create Preflight Error Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Prepared Invoices": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Xero Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Xero Batches": {
+      "main": [
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Xero Batch Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Xero Batch Payload": {
+      "main": [
+        [
+          {
+            "node": "Create Xero Invoices (Batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Xero Invoices (Batch)": {
+      "main": [
+        [
+          {
+            "node": "Parse Xero Batch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Xero Batch Results": {
+      "main": [
+        [
+          {
+            "node": "Any Invoices Created?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Invoices Created?": {
+      "main": [
+        [
+          {
+            "node": "Write Xero IDs to HubSpot (Batch)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Batch Error Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Xero IDs to HubSpot (Batch)": {
+      "main": [
+        [
+          {
+            "node": "Build Batch Error Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Batch Error Tasks": {
+      "main": [
+        [
+          {
+            "node": "Any Error Tasks?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Error Tasks?": {
+      "main": [
+        [
+          {
+            "node": "Create Error Tasks (Batch)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Between Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Error Tasks (Batch)": {
+      "main": [
+        [
+          {
+            "node": "Wait Between Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Between Batches": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Xero Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "3005c51c-3980-42f5-887b-7613a1827e84",
+  "meta": {
+    "instanceId": "badd361136705b8339a4999fc691602f7231ea58099f82b3bc20e589e33bbefd"
+  },
+  "nodeGroups": [],
+  "id": "QnM31XHTP1BeGsBM",
+  "tags": []
+}
