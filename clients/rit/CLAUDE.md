@@ -22,7 +22,7 @@ Read this before editing anything in `clients/rit/`. Full detail is in `README.m
 | hubspot-xero | `rit__hubspot-deposit-to-xero-invoice__v1.json` | Webhook `POST /create-deposit-invoice`. Draft Xero invoice with security deposit lines |
 | hubspot-xero | `rit__hubspot-adhoc-to-xero-invoice__v1.json` | Webhook `POST /create-ad-hoc-invoice`. Draft Xero invoice, plus a bill and registered fixed assets |
 
-Pending: HubSpot Weekly Invoice → Xero Invoice Sync (not yet exported).
+| hubspot-xero | `rit__hubspot-weekly-invoice-to-xero-sync__v1.json` | Schedule Trigger, weekly at 10:00. Creates Weekly invoices in HubSpot, then Draft invoices in Xero. Duplicate check window = start of trigger day to one minute before the next run (from the trigger timestamp, set in `Workflow Config`) |
 
 ## Instance facts
 An export in this folder always wins over a recorded value here. Do not copy facts to or from other clients.

@@ -28,9 +28,9 @@ clients/rit/
 | caterlink | `rit__caterlink-delivery-invoice-asset-update__v1.json` | RIT - Caterlink Delivery Invoice → Asset Update | Outlook poll, first PDF |
 | hubspot-xero | `rit__hubspot-asset-to-xero-fixed-asset__v1.json` | RIT - HubSpot Asset Created → Xero Fixed Asset Create | Webhook `/create-asset` |
 | hubspot-xero | `rit__hubspot-deposit-to-xero-invoice__v1.json` | RIT - HubSpot Deposit → Xero Invoice Create | Webhook `/create-deposit-invoice` |
+| hubspot-xero | `rit__hubspot-weekly-invoice-to-xero-sync__v1.json` | RIT - HubSpot Weekly Invoice → Xero Invoice Sync | Schedule, weekly 10:00 |
 | hubspot-xero | `rit__hubspot-adhoc-to-xero-invoice__v1.json` | RIT - HubSpot Adhoc → Xero Invoice Create | Webhook `/create-ad-hoc-invoice` |
 
-More to come (Weekly Invoice → Xero Invoice Sync).
 
 ## Importing
-Credentials must be re-linked after import. All five are exported with `active: true`; check before importing into a live instance.
+Credentials must be re-linked after import. All six are exported with `active: true`; check before importing into a live instance.

@@ -3,7 +3,7 @@
 Resolved, instance-specific values for RIT builds. **Only RIT values belong here.** Never copy values from another client's records or from `shared/knowledge/05_Build_Records.md`. Leave a field empty until confirmed from RIT's own systems.
 
 ## 1. Caterlink / HubSpot / Xero
-*Caterlink email + HubSpot → HubSpot / Xero. 5 workflows (see `workflows/`). Client: RIT. Instance: n8n Cloud, version UNKNOWN. Status: live (existing exports).*
+*Caterlink email + HubSpot → HubSpot / Xero. 6 workflows (see `workflows/`). Client: RIT. Instance: n8n Cloud, version UNKNOWN. Status: live (existing exports).*
 
 **Workflow IDs** (from export `id`)
 | Workflow | ID |
@@ -13,6 +13,7 @@ Resolved, instance-specific values for RIT builds. **Only RIT values belong here
 | RIT - Caterlink Delivery Invoice → Asset Update | `AVfNbcFzjNq4EPEA` |
 | RIT - HubSpot Deposit → Xero Invoice Create | `J9ZbnlctFRc4LPjS` |
 | RIT - HubSpot Adhoc → Xero Invoice Create | `FrSreNi92cYxdSLW` |
+| RIT - HubSpot Weekly Invoice → Xero Invoice Sync | `QnM31XHTP1BeGsBM` |
 | Shared error workflow | `GBIRaHZowF94O4cL` |
 
 **HubSpot**: custom Assets object `2-217972099`; invoices `0-53`; Quote-created deal stage `3350251995`; association type IDs used: contact→company `931` (HUBSPOT_DEFINED), contact→deal `29` (USER_DEFINED).
