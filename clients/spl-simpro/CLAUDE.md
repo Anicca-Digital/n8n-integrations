@@ -31,3 +31,19 @@ Do not loosen this without asking.
 
 ## Importing
 Credentials must be re-linked after import. Sub-workflow references use n8n workflow IDs, so re-select them when importing into a different instance.
+
+## Instance facts
+Read these before building or editing. An export in this folder always wins over a recorded value here. Do not copy facts to or from other clients.
+
+| Fact | Value |
+|---|---|
+| n8n version | UNKNOWN (ask) |
+| Cloud or self-hosted | UNKNOWN (ask) |
+| Error handler workflow ID | UNKNOWN (ask). No existing workflow sets `settings.errorWorkflow` |
+| Credential names (exact spelling) | `SPL Account` (HubSpot app token, `hubspotAppToken`), `SPL Simpro` (OAuth2) |
+| Consultant access level | UNKNOWN (ask) |
+
+Confirmed on 2026-11-09 from the workflow exports in `clients/spl-simpro/workflows/` (credential names and errorWorkflow state only). Resolved IDs go in `BUILD_RECORDS.md`.
+
+## Known validator findings (2026-11-09)
+`python3 shared/tools/validate_workflow.py` reports 12 ERRORs on the existing exports: 10 sub-workflow triggers missing `inputSource: "passthrough"`, and no authentication on the `/simpro-upsert` and `/hubsput-upsert` webhooks. Do not fix these as a side effect of another change; raise them first.
