@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Environment-specific values live here and nowhere else.\n// REPLACE_* values must be filled in before publishing (see the sticky note).\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyId: 'REPLACE_BC_COMPANY_GUID',         // GET .../api/v2.0/companies\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    closedWonStageId: 'closedwon',\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
+        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyName: 'National Weighing & Instrument', // the company's `name`; its GUID is looked up each run\n};\nbc.companiesUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    closedWonStageId: 'closedwon',\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
       },
       "id": "c6e9f32e-1359-533e-aba2-0594e05dcfb0",
       "name": "Workflow Config",
@@ -27,7 +27,7 @@
         300
       ],
       "notesInFlow": true,
-      "notes": "Only the BC company GUID is still to fill in."
+      "notes": "BC values are set."
     },
     {
       "parameters": {
@@ -114,6 +114,66 @@
     {
       "parameters": {
         "method": "GET",
+        "url": "={{ $('Workflow Config').first().json.bc.companiesUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ \"name eq '\" + $('Workflow Config').first().json.bc.companyName.replace(/'/g, \"''\") + \"'\" }}"
+            },
+            {
+              "name": "$select",
+              "value": "id,name"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c0814878-156a-5766-b06e-af0a4db7bc29",
+      "name": "Find BC Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// BC API URLs need the company GUID. Resolve it from the company name; fail if it is not exactly one.\nconst bc = $('Workflow Config').first().json.bc;\nconst found = $input.first().json.value || [];\nif (found.length !== 1) {\n  throw new Error(`Expected exactly one Business Central company named \"${bc.companyName}\" but found ${found.length}`);\n}\nreturn [{ json: { companyId: found[0].id, apiRoot: `${bc.companiesUrl}(${found[0].id})` } }];\n"
+      },
+      "id": "6596e6a7-218e-5e48-a170-479a09b0a7c9",
+      "name": "Resolve BC Company",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
         "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Execute Workflow Trigger').first().json.dealId }}/associations/companies",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
@@ -124,7 +184,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        880,
+        1320,
         300
       ],
       "credentials": {
@@ -149,7 +209,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
+        1540,
         300
       ],
       "credentials": {
@@ -174,7 +234,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1320,
+        1760,
         300
       ],
       "credentials": {
@@ -195,7 +255,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
+        1980,
         300
       ]
     },
@@ -221,7 +281,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1760,
+        2200,
         300
       ],
       "credentials": {
@@ -264,7 +324,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1980,
+        2420,
         300
       ]
     },
@@ -290,7 +350,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
+        2640,
         220
       ],
       "credentials": {
@@ -311,7 +371,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2200,
+        2640,
         400
       ]
     },
@@ -324,7 +384,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2420,
+        2860,
         300
       ]
     },
@@ -344,7 +404,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2640,
+        3080,
         300
       ],
       "credentials": {
@@ -367,7 +427,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2860,
+        3300,
         300
       ],
       "notesInFlow": true,
@@ -404,14 +464,14 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3080,
+        3520,
         300
       ]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/customers",
+        "url": "={{ $('Resolve BC Company').first().json.apiRoot }}/customers",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendQuery": true,
@@ -443,7 +503,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
+        3740,
         200
       ],
       "credentials": {
@@ -464,14 +524,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3520,
+        3960,
         200
       ]
     },
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/customers({{ $json.customerId }})",
+        "url": "={{ $('Resolve BC Company').first().json.apiRoot }}/customers({{ $json.customerId }})",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -497,7 +557,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3740,
+        4180,
         200
       ],
       "credentials": {
@@ -520,14 +580,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3960,
+        4400,
         200
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/customers",
+        "url": "={{ $('Resolve BC Company').first().json.apiRoot }}/customers",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -549,7 +609,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
+        3740,
         420
       ],
       "credentials": {
@@ -576,7 +636,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3520,
+        3960,
         420
       ],
       "credentials": {
@@ -599,7 +659,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3740,
+        4180,
         420
       ]
     },
@@ -612,14 +672,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4180,
+        4620,
         300
       ]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/salesOrders",
+        "url": "={{ $('Resolve BC Company').first().json.apiRoot }}/salesOrders",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendQuery": true,
@@ -651,7 +711,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4400,
+        4840,
         300
       ],
       "credentials": {
@@ -694,7 +754,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4620,
+        5060,
         300
       ],
       "notesInFlow": true,
@@ -709,14 +769,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4840,
+        5280,
         200
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/salesOrders",
+        "url": "={{ $('Resolve BC Company').first().json.apiRoot }}/salesOrders",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -738,7 +798,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4840,
+        5280,
         420
       ],
       "credentials": {
@@ -758,7 +818,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5060,
+        5500,
         420
       ]
     },
@@ -778,7 +838,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5280,
+        5720,
         300
       ],
       "credentials": {
@@ -792,7 +852,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. Fill the BC company GUID in *Workflow Config* (REPLACE_BC_COMPANY_GUID). Tenant and environment (Production) are already set.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. *Workflow Config* holds the BC tenant, environment and company name; the company GUID is looked up on every run. Check they are right.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
         "height": 240,
         "width": 700,
         "color": 5
@@ -845,7 +905,7 @@
       "main": [
         [
           {
-            "node": "Get Deal Company Associations",
+            "node": "Find BC Company",
             "type": "main",
             "index": 0
           }
@@ -853,6 +913,28 @@
         [
           {
             "node": "Skip Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find BC Company": {
+      "main": [
+        [
+          {
+            "node": "Resolve BC Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve BC Company": {
+      "main": [
+        [
+          {
+            "node": "Get Deal Company Associations",
             "type": "main",
             "index": 0
           }
