@@ -1,18 +1,28 @@
 {
-  "name": "[NWI] Deal Closed Won -> BC Customer + Sales Order",
+  "name": "[NWI] HubSpot Deal Closed Won -> BC Customer + Sales Order",
   "nodes": [
     {
       "parameters": {
-        "inputSource": "passthrough"
+        "httpMethod": "POST",
+        "path": "nwi-hubspot-deal-closedwon",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
       },
-      "id": "580516bb-46ad-5dfc-a59a-58ad7ecd247b",
-      "name": "Execute Workflow Trigger",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
+      "id": "c8538a12-5762-5321-98b6-19b2f0342a51",
+      "name": "Receive HubSpot Deal Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
       "position": [
         0,
         300
-      ]
+      ],
+      "webhookId": "2564def1-f515-544d-911d-915d26a4c94e",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "NWI HubSpot Webhook Auth"
+        }
+      }
     },
     {
       "parameters": {
@@ -31,8 +41,23 @@
     },
     {
       "parameters": {
+        "jsCode": "// One execution per webhook call. HubSpot posts a JSON array of events; keep the \"Closed Won? ticked\" ones.\nconst hs = $('Workflow Config').first().json.hubspot;\nconst body = $('Receive HubSpot Deal Events').first().json.body;\nconst events = Array.isArray(body) ? body : [];\nconst ids = [];\nfor (const e of events) {\n  // Legacy apps send 'deal.propertyChange'; developer-platform projects send 'object.propertyChange' + objectTypeId 0-3.\n  const isDealChange = e.subscriptionType === 'deal.propertyChange'\n    || (e.subscriptionType === 'object.propertyChange' && e.objectTypeId === '0-3');\n  if (!isDealChange) continue;\n  if (e.propertyName !== hs.triggerProperty || String(e.propertyValue).toLowerCase() !== hs.triggerValue) continue;\n  const id = String(e.objectId || '').trim();\n  if (id && !ids.includes(id)) ids.push(id);\n}\nif (ids.length === 0) return [];   // not a \"ticked\" event (e.g. un-tick): end quietly\nif (ids.length > 1) {\n  // This workflow handles one deal per run. Fail loudly rather than silently drop deals.\n  throw new Error(`Webhook call carried ${ids.length} closed-won deals (${ids.join(', ')}); this workflow handles one per run.`);\n}\nreturn [{ json: { dealId: ids[0] } }];\n"
+      },
+      "id": "c3a13ab8-d260-53d1-bd9f-9afe3b894014",
+      "name": "Pick Deal From Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "notesInFlow": true,
+      "notes": "Real-time: one deal per execution. Un-tick events end here."
+    },
+    {
+      "parameters": {
         "method": "GET",
-        "url": "=https://api.hubapi.com/crm/v3/objects/deals/{{ $('Execute Workflow Trigger').first().json.dealId }}",
+        "url": "=https://api.hubapi.com/crm/v3/objects/deals/{{ $('Pick Deal From Event').first().json.dealId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendQuery": true,
@@ -51,7 +76,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
+        660,
         300
       ],
       "credentials": {
@@ -94,7 +119,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        660,
+        880,
         300
       ],
       "notesInFlow": true,
@@ -107,7 +132,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        660,
+        880,
         520
       ]
     },
@@ -146,7 +171,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        880,
+        1100,
         300
       ],
       "credentials": {
@@ -167,45 +192,20 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1100,
+        1320,
         300
       ]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Execute Workflow Trigger').first().json.dealId }}/associations/companies",
+        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Pick Deal From Event').first().json.dealId }}/associations/companies",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
       },
       "id": "fed54301-e92c-56a4-ad15-ecaeeaf2f77e",
       "name": "Get Deal Company Associations",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1320,
-        300
-      ],
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "NWI HubSpot App Token"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Execute Workflow Trigger').first().json.dealId }}/associations/contacts",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "id": "e05837ba-882b-53fd-94e2-8dc2b3edbf5e",
-      "name": "Get Deal Contact Associations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -224,7 +224,32 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Execute Workflow Trigger').first().json.dealId }}/associations/line_items",
+        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Pick Deal From Event').first().json.dealId }}/associations/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "e05837ba-882b-53fd-94e2-8dc2b3edbf5e",
+      "name": "Get Deal Contact Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        300
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "NWI HubSpot App Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Pick Deal From Event').first().json.dealId }}/associations/line_items",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
@@ -234,7 +259,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1760,
+        1980,
         300
       ],
       "credentials": {
@@ -255,7 +280,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1980,
+        2200,
         300
       ]
     },
@@ -281,7 +306,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
+        2420,
         300
       ],
       "credentials": {
@@ -324,7 +349,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2420,
+        2640,
         300
       ]
     },
@@ -350,7 +375,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2640,
+        2860,
         220
       ],
       "credentials": {
@@ -371,7 +396,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
+        2860,
         400
       ]
     },
@@ -384,7 +409,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2860,
+        3080,
         300
       ]
     },
@@ -404,7 +429,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3080,
+        3300,
         300
       ],
       "credentials": {
@@ -427,7 +452,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3300,
+        3520,
         300
       ],
       "notesInFlow": true,
@@ -464,7 +489,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3520,
+        3740,
         300
       ]
     },
@@ -503,7 +528,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3740,
+        3960,
         200
       ],
       "credentials": {
@@ -524,7 +549,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3960,
+        4180,
         200
       ]
     },
@@ -557,7 +582,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4180,
+        4400,
         200
       ],
       "credentials": {
@@ -580,7 +605,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4400,
+        4620,
         200
       ]
     },
@@ -609,7 +634,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3740,
+        3960,
         420
       ],
       "credentials": {
@@ -636,7 +661,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3960,
+        4180,
         420
       ],
       "credentials": {
@@ -659,7 +684,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4180,
+        4400,
         420
       ]
     },
@@ -672,7 +697,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4620,
+        4840,
         300
       ]
     },
@@ -711,7 +736,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4840,
+        5060,
         300
       ],
       "credentials": {
@@ -754,7 +779,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5060,
+        5280,
         300
       ],
       "notesInFlow": true,
@@ -769,7 +794,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5280,
+        5500,
         200
       ]
     },
@@ -798,7 +823,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5280,
+        5500,
         420
       ],
       "credentials": {
@@ -818,7 +843,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5500,
+        5720,
         420
       ]
     },
@@ -838,7 +863,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5720,
+        5940,
         300
       ],
       "credentials": {
@@ -852,7 +877,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. *Workflow Config* holds the BC tenant, environment and company name; the company GUID is looked up on every run. Check they are right.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text), deal `closed_won` (single checkbox).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (property `closed_won` on Deal) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. *Workflow Config* holds the BC tenant, environment and company name; the company GUID is looked up on every run. Check they are right.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text), deal `closed_won` (single checkbox).\n6. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
         "height": 240,
         "width": 700,
         "color": 5
@@ -868,7 +893,7 @@
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": {
+    "Receive HubSpot Deal Events": {
       "main": [
         [
           {
@@ -880,6 +905,17 @@
       ]
     },
     "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Pick Deal From Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Deal From Event": {
       "main": [
         [
           {
@@ -1241,8 +1277,7 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate",
-    "callerPolicy": "workflowsFromSameOwner"
+    "binaryMode": "separate"
   },
   "pinData": {}
 }
