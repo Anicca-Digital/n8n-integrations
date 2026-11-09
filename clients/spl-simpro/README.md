@@ -1,12 +1,15 @@
-# spl
+# SPL: HubSpot ↔ Simpro
 
-n8n workflow exports for the SPL HubSpot ↔ Simpro sync. The folders match the n8n project folders.
+n8n workflow exports for the SPL HubSpot ↔ Simpro sync. The folders match the n8n project folders. Client folder: `clients/spl-simpro/`.
 
 ```
-workflows/
-├── hubspot-to-simpro/   # "HubSpot - Simpro" folder: HubSpot changes pushed into Simpro
-├── simpro-to-hubspot/   # "Simpro - HubSpot" folder: Simpro changes pushed into HubSpot
-└── sub/                 # "Sub" folder: sub-workflows called by the routers above
+clients/spl-simpro/
+├── CLAUDE.md
+├── code-nodes/          # Code node JS extracted from workflows (empty for now)
+└── workflows/
+    ├── hubspot-to-simpro/   # "HubSpot - Simpro" folder: HubSpot changes pushed into Simpro
+    ├── simpro-to-hubspot/   # "Simpro - HubSpot" folder: Simpro changes pushed into HubSpot
+    └── sub/                 # "Sub" folder: sub-workflows called by the routers above
 ```
 
 ## Workflows

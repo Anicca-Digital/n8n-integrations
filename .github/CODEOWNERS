@@ -1,0 +1,7 @@
+# Replace the placeholders with real GitHub users or teams.
+# Last matching pattern wins.
+
+*                       @REPLACE-WITH-DEFAULT-OWNER
+/shared/                @REPLACE-WITH-SHARED-OWNER
+/.github/               @REPLACE-WITH-REPO-ADMIN
+/clients/spl-simpro/    @REPLACE-WITH-SPL-OWNER
