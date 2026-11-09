@@ -1,13 +1,18 @@
 // Single source of truth for this automation. Nothing else needs editing to retune it.
 const TIMEZONE = 'Australia/Brisbane';      // 'today' and the duplicate window are read in this zone
-const GUARD_LOOKBACK_DAYS = 0;              // 0 = window starts at the start of the trigger day. Set to 1 for ONE recovery run the day after a failed run, then set back to 0.
+const GUARD_LOOKBACK_DAYS = 0;              // 0 = window starts at the start of the Sunday. Set to 1 for ONE recovery run the day after a failed run, then set back to 0.
 
 // Duplicate-check window, taken from the Schedule Trigger (not from "now"):
-// from the start of the day the schedule fired, to one minute before the next weekly execution.
+// from 00:00:00 on the Sunday of the run week, to 23:59:59.999 on the following Saturday.
+// The window always snaps to the Sunday on/before the trigger time, so a manual test run on
+// any other weekday still covers the same Sunday -> Saturday week.
 const runAt = DateTime.fromISO($('Schedule Trigger').first().json.timestamp, { zone: TIMEZONE });
 if (!runAt.isValid) throw new Error('Schedule Trigger did not return a valid timestamp - cannot work out the duplicate-check window.');
-const windowStartMs = runAt.startOf('day').minus({ days: GUARD_LOOKBACK_DAYS }).toMillis();
-const windowEndMs = runAt.plus({ days: 7 }).minus({ minutes: 1 }).toMillis();
+
+// Luxon weekday: Mon = 1 ... Sat = 6, Sun = 7. (weekday % 7) = days since the most recent Sunday (Sunday itself = 0).
+const weekStart = runAt.startOf('day').minus({ days: runAt.weekday % 7 });          // Sunday 00:00:00.000
+const windowStartMs = weekStart.minus({ days: GUARD_LOOKBACK_DAYS }).toMillis();     // lookback only moves the start
+const windowEndMs = weekStart.plus({ days: 7 }).minus({ milliseconds: 1 }).toMillis(); // Saturday 23:59:59.999
 
 return [{
   json: {
@@ -28,14 +33,14 @@ return [{
     batchSize: 50,                             // ids per HubSpot batch call (HubSpot allows 100)
     openBatchSize: 10,                         // invoices per draft -> open call. Smaller than batchSize on purpose: opening is the heavy HubSpot step (a 50-invoice call returned 500 INTERNAL_ERROR on 8 Nov 2026).
     guardLookbackDays: GUARD_LOOKBACK_DAYS,    // see top of node
-    windowStartMs,                             // duplicate window start (ms): start of the trigger day, minus guardLookbackDays
-    windowEndMs,                               // duplicate window end (ms): trigger time + 7 days - 1 minute (one minute before the next weekly run)
+    windowStartMs,                             // duplicate window start (ms): Sunday 00:00:00.000 of the run week, minus guardLookbackDays
+    windowEndMs,                               // duplicate window end (ms): the following Saturday 23:59:59.999
     companyFlagProperty: 'asset_delivered',    // company number property: invoiced when > 0
     assetObjectType: '2-217972099',            // custom Assets object (p443317712_assets)
     billableStatuses: ['active', 'to be returned'],   // asset status, compared lower-case
     invoiceType: 'Weekly',
     invoiceCurrency: 'AUD',
-    // The duplicate check looks at Weekly invoices created inside the window above (trigger day -> one minute before the next run) that have a company.
+    // The duplicate check looks at Weekly invoices created inside the window above (Sunday 00:00 -> Saturday 23:59:59.999) that have a company.
     timezone: TIMEZONE,                        // the window and the invoice dates are read in this zone
     issueWeekday: 1,                           // invoice date = the FOLLOWING Monday (1 = Monday). Run on a Monday -> next week's Monday.
     // Due date = the first such weekday on/after the invoice date, from the company's weekly_invoice_expiry_date (Tue-Fri today)
