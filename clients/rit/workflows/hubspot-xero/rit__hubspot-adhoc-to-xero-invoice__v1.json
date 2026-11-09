@@ -1,0 +1,984 @@
+{
+  "name": "RIT - HubSpot Adhoc → Xero Invoice Create",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Build Xero Bill Line Items Payload\n// ---------------------------------------------------------------------------\n// Runs once after \"Loop Over Assets For Registration\" finishes\n// (done output, index 0). Takes the invoice line items already built by\n// \"Build Xero Line Items Payload\" and replaces:\n//   - UnitAmount / LineAmount -> Xero asset purchasePrice\n//   - Description             -> \"<assetName>\\nSerial Number <serialNumber>\"\n//   - AccountCode             -> RIT Rental Assets @ Cost account for the state\n//\n// Match key: invoice line ItemCode (HubSpot asset_number) <-> Xero assetNumber\n// Source priority:\n//   1. \"Update Xero Asset Status to Registered\" response (post-registration)\n//   2. \"Get Xero Asset Details\" response (pre-registration fallback)\n// ---------------------------------------------------------------------------\n\n// Bill account codes by state. Anything else falls back to the legacy account.\nconst BILL_ACCOUNTS = [\n  { accountCode: 'WA1460', name: 'RIT Rental Assets @ Cost (WA)', region: 'WA' },\n  { accountCode: 'VIC1460', name: 'RIT Rental Assets @ Cost (VIC)', region: 'VIC' },\n];\nconst DEFAULT_BILL_ACCOUNT_CODE = '1460'; // Legacy Rental Asset @ Cost\n\nconst norm = (v) => (v == null ? '' : String(v).trim().toUpperCase());\n\n// Work out the state for a line. Prefers an explicit region/state on the line,\n// otherwise reads the prefix of the invoice's rental income account\n// (WA5000 -> WA, VIC5000 -> VIC, NSW5000 -> NSW).\nconst resolveRegion = (line) => {\n  const explicit = norm(line.region ?? line.state);\n  if (explicit) return explicit;\n  const match = norm(line.AccountCode).match(/^[A-Z]+/);\n  return match ? match[0] : '';\n};\n\nconst resolveBillAccountCode = (line) => {\n  const region = resolveRegion(line);\n  const matched = BILL_ACCOUNTS.find((a) => a.region === region);\n  if (!matched) {\n    console.log(\n      `ℹ Region \"${region || 'unknown'}\" for ${line.ItemCode} has no state account - using ${DEFAULT_BILL_ACCOUNT_CODE}.`\n    );\n  }\n  return matched ? matched.accountCode : DEFAULT_BILL_ACCOUNT_CODE;\n};\n\n// Collect every run of a node inside a loop (each loop iteration = one run).\nconst collectRuns = (nodeName) => {\n  const out = [];\n  for (let run = 0; run < 1000; run++) {\n    try {\n      const items = $(nodeName).all(0, run);\n      if (!items || items.length === 0) break;\n      out.push(...items);\n    } catch (e) {\n      break;\n    }\n  }\n  return out;\n};\n\n// Xero Assets API can return the asset at the root or wrapped - handle both.\nconst unwrapAsset = (json) => {\n  if (!json) return null;\n  if (json.assetNumber || json.assetId) return json;\n  if (Array.isArray(json.items) && json.items[0]) return json.items[0];\n  if (json.asset) return json.asset;\n  return null;\n};\n\n// ---- 1. Build assetNumber -> asset details map -----------------------------\nconst assetByNumber = new Map();\n\nconst addAssets = (items, overwrite) => {\n  for (const item of items) {\n    const asset = unwrapAsset(item.json);\n    if (!asset || !asset.assetNumber) continue; // skips error-branch items\n    const price = parseFloat(asset.purchasePrice);\n    if (Number.isNaN(price)) continue;\n    const key = norm(asset.assetNumber);\n    if (overwrite || !assetByNumber.has(key)) {\n      assetByNumber.set(key, {\n        price,\n        assetId: asset.assetId,\n        assetName: asset.assetName ?? '',\n        serialNumber: asset.serialNumber ?? '',\n      });\n    }\n  }\n};\n\n// Fallback first, then overwrite with post-registration values.\naddAssets(collectRuns('Get Xero Asset Details'), false);\naddAssets(collectRuns('Update Xero Asset Status to Registered'), true);\naddAssets($input.all(), true); // loop \"done\" aggregate of the same responses\n\n// ---- 2. Pull the invoice line items already built --------------------------\nlet invoiceLineItems;\ntry {\n  invoiceLineItems = $('Build Xero Line Items Payload').first().json.lineItems;\n} catch (e) {\n  throw new Error(\n    'Build Xero Line Items Payload has not run yet - the invoice line item loop must finish before the asset registration loop.'\n  );\n}\n\nif (!Array.isArray(invoiceLineItems) || invoiceLineItems.length === 0) {\n  throw new Error('No line items found on Build Xero Line Items Payload.');\n}\n\n// ---- 3. Rebuild line items from the Xero asset -----------------------------\nconst missingPurchasePrice = [];\n\nconst lineItems = invoiceLineItems.map((line) => {\n  const asset = assetByNumber.get(norm(line.ItemCode));\n\n  if (!asset) {\n    missingPurchasePrice.push(line.ItemCode);\n    console.log(`⚠ No Xero asset found for ${line.ItemCode} - UnitAmount set to 0, invoice description kept.`);\n  }\n\n  const unitAmount = asset ? asset.price : 0;\n  const quantity = line.Quantity ?? 1;\n\n  const description = asset\n    ? `${asset.assetName}\\nSerial Number ${asset.serialNumber}`\n    : line.Description;\n\n  return {\n    Description: description,\n    Quantity: quantity,\n    UnitAmount: unitAmount,\n    ItemCode: line.ItemCode,\n    AccountCode: resolveBillAccountCode(line),\n    LineAmount: Math.round(unitAmount * quantity * 100) / 100,\n  };\n});\n\nreturn [\n  {\n    json: {\n      lineItems,\n      missingPurchasePrice,\n      hasMissingPurchasePrice: missingPurchasePrice.length > 0,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        1168
+      ],
+      "id": "f3e4d3d6-2565-4190-a4cb-4b6eff5e354b",
+      "name": "Build Xero Bill Line Items Payload",
+      "notesInFlow": true,
+      "notes": "Builds bill lines from each asset's purchase price, matched on asset number."
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT input2.*, input1.InvoiceID AS InvoiceID\nFROM input2\nCROSS JOIN input1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1872,
+        1136
+      ],
+      "id": "4095c0a2-f15f-4a4e-b727-44ba05ecbad5",
+      "name": "Combine Bill ID And Line Items",
+      "notesInFlow": true,
+      "notes": "Joins the new bill's ID with the built bill lines."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.xero.com/api.xro/2.0/Invoices/{{ $json.InvoiceID }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ InvoiceID: $json.InvoiceID, LineItems: $json.lineItems }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2080,
+        1136
+      ],
+      "id": "636e95b5-e3a8-4bf5-a753-fa7dbde3c568",
+      "name": "Update Xero Bill With Line Items",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "notes": "Posts the bill lines in one call. Failures go to Normalize Error."
+    },
+    {
+      "parameters": {
+        "organizationId": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34",
+        "type": "ACCPAY",
+        "contactId": "=a4325211-6228-4be8-8ae6-6091f756ea80",
+        "lineItemsUi": {
+          "lineItemsValues": []
+        },
+        "additionalFields": {
+          "brandingThemeId": "294af06f-b8a6-4049-8420-763713693f3a",
+          "currency": "AUD",
+          "date": "={{ $json.createDate }}",
+          "dueDate": "={{ $json.dueDate }}",
+          "invoiceNumber": "={{ $json.reference }}",
+          "reference": "={{ $json.purchaseOrderNumber }}",
+          "status": "DRAFT"
+        }
+      },
+      "type": "n8n-nodes-base.xero",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        736
+      ],
+      "id": "0c329dcf-587b-4b2a-86b4-e67ebc975d0b",
+      "name": "Create Xero Bill",
+      "notesInFlow": true,
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "MzphtETVBeBH9l4U",
+          "name": "RIT Xero"
+        }
+      },
+      "notes": "Creates a DRAFT bill (ACCPAY) with no lines. Lines are added later."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "ID",
+              "value": "={{ $json.body.invoice_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        -16,
+        816
+      ],
+      "id": "9f569a86-5816-4b5e-9f83-059f273c5c1a",
+      "name": "Save Execution Data",
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot invoice ID against the execution so it is searchable."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/line_items/{{ $json['associations[\\'line items\\'].results'].id }}?properties=xero_asset_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1264,
+        1344
+      ],
+      "id": "77a7f306-0b2d-42e2-b3ec-45825a9e2a8c",
+      "name": "Get Line Item Xero Asset ID",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/2-217972099/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    {\n      \"filters\": [\n        {\n          \"propertyName\": \"xero_asset_id\",\n          \"operator\": \"EQ\",\n          \"value\": \"{{ $json.properties.xero_asset_id }}\"\n        }\n      ]\n    }\n  ],\n  \"properties\": [\"xero_asset_id\", \"price\", \"serial_number\", \"delivery_date\"],\n  \"limit\": 1\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1456,
+        1344
+      ],
+      "id": "5642f4b4-d078-415e-8c73-0a447446cd91",
+      "name": "Search HubSpot Asset Record",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1024,
+        1328
+      ],
+      "id": "125dffc9-031c-4788-a14f-445b27a8d9a8",
+      "name": "Loop Over Assets For Registration",
+      "notesInFlow": true,
+      "notes": "Runs once per line item to register its Xero fixed asset."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/assets.xro/1.0/Assets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assetId\": \"{{ $json.assetId }}\",\n  \"assetName\": \"{{ $json.assetName }}\",\n  \"assetNumber\": \"{{ $json.assetNumber }}\",\n  \"purchaseDate\": \"{{ $('Search HubSpot Asset Record').item.json.results[0].properties.delivery_date }}\",\n  \"purchasePrice\": {{ $('Search HubSpot Asset Record').item.json.results[0].properties.price }},\n  \"assetTypeId\": \"{{ $json.assetTypeId }}\",\n  \"disposalPrice\": 0,\n  \"assetStatus\": \"Registered\",\n  \"serialNumber\": \"{{ $('Search HubSpot Asset Record').item.json.results[0].properties.serial_number }}\",\n  \"trackingItems\": [],\n  \"bookDepreciationSetting\": {\n    \"depreciableObjectId\": \"{{ $json.bookDepreciationSetting.depreciableObjectId }}\",\n    \"depreciableObjectType\": \"Asset\",\n    \"bookEffectiveDateOfChangeId\": \"{{ $json.bookDepreciationSetting.bookEffectiveDateOfChangeId }}\",\n    \"depreciationMethod\": \"NoDepreciation\",\n    \"averagingMethod\": \"ActualDays\",\n    \"depreciationRate\": 0,\n    \"depreciationCalculationMethod\": \"None\",\n    \"effectiveFromDate\": \"{{ $('Search HubSpot Asset Record').item.json.results[0].properties.delivery_date }}\"\n  },\n  \"bookDepreciationDetail\": {\n    \"depreciationStartDate\": \"{{ $('Search HubSpot Asset Record').item.json.results[0].properties.delivery_date }}\",\n    \"priorAccumDepreciationAmount\": 0,\n    \"currentAccumDepreciationAmount\": 0,\n    \"currentCapitalGain\": 0,\n    \"currentGainLoss\": 0\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1824,
+        1344
+      ],
+      "id": "a6a91a18-8f94-40b8-a5fa-d5161a4cc336",
+      "name": "Update Xero Asset Status to Registered",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "notes": "Moves the Xero fixed asset from Draft to Registered."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.xero.com/assets.xro/1.0/Assets/{{ $json.results[0].properties.xero_asset_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1648,
+        1344
+      ],
+      "id": "b68537de-ffc2-4904-9152-cb852a297052",
+      "name": "Get Xero Asset Details",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.xero.com/api.xro/2.0/Invoices/{{ $('Attach Invoice ID and State to Line Items').item.json.InvoiceID }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ InvoiceID: $json.invoiceId, LineItems: $json.lineItems }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1648,
+        848
+      ],
+      "id": "b8cd1188-9a07-4c5a-a823-2c53e541028f",
+      "name": "Update Xero Invoice With Line Items",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "notes": "One call after the loop finishes, sending every line item at once."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs once after the loop finishes (Loop Through Line Items \"done\" output, index 0).\n// Builds the full Xero LineItems array from every line item processed during the loop.\nconst items = $input.all();\n\n// Formats a date as D/M/YYYY (no leading zeros), matching the invoice style.\nconst formatDate = (date) =>\n  `${date.getUTCDate()}/${date.getUTCMonth() + 1}/${date.getUTCFullYear()}`;\n\n// Returns the Sunday that ends the Monday-Sunday week containing the delivery date:\n// - if delivery is on a Sunday, the end date is that same day\n// - if delivery is on a Monday, the end date is 6 days later (that week's Sunday)\n// - otherwise, it's the next Sunday after the delivery date\nconst getEndOfWeekSunday = (deliveryDate) => {\n  const day = deliveryDate.getUTCDay(); // Sunday = 0 ... Saturday = 6\n  const diffToSunday = (7 - day) % 7;\n  const sunday = new Date(deliveryDate);\n  sunday.setUTCDate(sunday.getUTCDate() + diffToSunday);\n  return sunday;\n};\n\nconst lineItems = items.map((item) => {\n  const deliveryDate = new Date(item.json.properties.delivery_date + 'T00:00:00Z');\n  const endSunday = getEndOfWeekSunday(deliveryDate);\n  const dateRange = `${formatDate(deliveryDate)} - ${formatDate(endSunday)}`;\n\n  return {\n    Description: `${item.json.properties.asset_number} | Initial Invoice ${dateRange} | ${item.json.properties.name}\\nSerial Number ${item.json.properties.serial_number}`,\n    Quantity: 1,\n    UnitAmount: parseFloat(item.json.properties.amount),\n    ItemCode: item.json.properties.asset_number,\n    AccountCode: item.json.account_id,\n    LineAmount: parseFloat(item.json.properties.amount),\n  };\n});\n\n// InvoiceID is constant across all line items for this run - pull it from the\n// original Loop Through Line Items output, since the current items now hold the\n// HubSpot line item fetch response instead (InvoiceID doesn't survive that call).\nconst invoiceId = $('Loop Over Line Items').first().json.InvoiceID;\n\nreturn [{ json: { invoiceId, lineItems } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        848
+      ],
+      "id": "d7d7a8c8-c23d-4583-813f-eca7910f9470",
+      "name": "Build Xero Line Items Payload"
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "numberInputs": 3,
+        "query": "SELECT\n  input2.*,\n  input1.InvoiceID,\n  input3.body.state AS state\nFROM input2, input1, input3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        688,
+        960
+      ],
+      "id": "56bfdce0-af55-4d92-8dbe-18a68f25ca38",
+      "name": "Attach Invoice ID and State to Line Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ACCOUNTS = [\n  { accountId: 'WA5000', name: 'Rental Income (WA)' },\n  { accountId: 'VIC5000', name: 'Rental Income (VIC)' },\n  { accountId: 'NSW5000', name: 'Rental Income (NSW)' },\n];\nconst DEFAULT_ACCOUNT_ID = 'WA5000';\n\nfor (const item of $input.all()) {\n  let region = null;\n  try {\n    region = $('Loop Over Line Items').item.json.state ?? null;\n  } catch (e) {\n    console.log('Could not resolve item from Loop Through Line Items:', e.message);\n  }\n\n  if (region == null) {\n    console.log('⚠ No state found on the Loop Through Line Items item — region will be null.');\n  }\n\n  const matchedAccount = region ? ACCOUNTS.find((a) => a.name.includes(region)) : null;\n\n  item.json.region = region;\n  item.json.account_id = matchedAccount ? matchedAccount.accountId : DEFAULT_ACCOUNT_ID;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        992
+      ],
+      "id": "7e01be0c-80d5-4748-b0fa-a2b1e77541da",
+      "name": "Resolve Rental Account by State",
+      "notesInFlow": true,
+      "notes": "Picks the Xero rental income account from the line item's state. Falls back to WA5000."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/invoices/{{ $json.body.invoice_id }}?properties=hs_purchase_order_number,hubspot_owner_id,hs_number,hs_due_date,reference",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        144,
+        816
+      ],
+      "id": "a9b5da97-fa59-4480-bf3a-bcb17d8bc34c",
+      "name": "Get Invoice Details",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Fetches the HubSpot invoice. Output fans out to three parallel branches: contact, line items, and the final merge."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $('Append Xero Contact ID').item.json.invoiceId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"xero_invoice_id\": \"{{ $json.InvoiceID }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1328,
+        560
+      ],
+      "id": "d8c14aaf-902d-4eb1-8a8f-2155dfea4cf8",
+      "name": "Save Xero Invoice ID To HubSpot",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Writes the new Xero InvoiceID to xero_invoice_id on the HubSpot invoice."
+    },
+    {
+      "parameters": {
+        "organizationId": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34",
+        "type": "ACCREC",
+        "contactId": "={{ $json.xeroContactId }}",
+        "lineItemsUi": {
+          "lineItemsValues": []
+        },
+        "additionalFields": {
+          "brandingThemeId": "294af06f-b8a6-4049-8420-763713693f3a",
+          "currency": "AUD",
+          "date": "={{ $json.createDate }}",
+          "dueDate": "={{ $json.dueDate }}",
+          "invoiceNumber": "={{ $json.invoiceNumber }}",
+          "reference": "={{ $json.purchaseOrderNumber }}",
+          "status": "DRAFT"
+        }
+      },
+      "type": "n8n-nodes-base.xero",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        560
+      ],
+      "id": "3edaa300-5849-43f8-a9ea-a56337ecb3dd",
+      "name": "Create Xero Invoice",
+      "notesInFlow": true,
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "MzphtETVBeBH9l4U",
+          "name": "RIT Xero"
+        }
+      },
+      "notes": "Creates a DRAFT customer invoice with no lines. Lines are added by Update Xero Invoice With Line Items."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1072,
+        976
+      ],
+      "id": "04ec83c6-1947-4c0a-a26d-a96432912cc1",
+      "name": "Loop Over Line Items"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "associations['line items'].results",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "InvoiceID, state",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        864,
+        976
+      ],
+      "id": "e416249f-bf07-4b7f-ba01-7c850b0f6c3d",
+      "name": "Split Out Line Items"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $json.id }}?associations=line_items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        992
+      ],
+      "id": "d0e99086-cf85-4d29-872d-6e1201000c69",
+      "name": "Get Invoice With Line Item Associations",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Re-fetches the invoice with its line item associations, to list the line items."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/line_items/{{ $json['associations[\\'line items\\'].results'].id }}?properties=amount,quantity,name,asset_number,xero_asset_id,xero_item_id,description,serial_number,delivery_date",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1296,
+        992
+      ],
+      "id": "5245fed9-0e81-4de8-b91b-59656ed3ba42",
+      "name": "Get Line Item Details",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-ad-hoc-invoice",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -192,
+        816
+      ],
+      "id": "9d052e6e-d9bc-478d-951c-9f39c54f850e",
+      "name": "Receive Ad Hoc Invoice Webhook",
+      "webhookId": "e1933c07-45c4-45ac-9d49-af3d431c188f",
+      "notesInFlow": true,
+      "notes": "Called by a HubSpot workflow when an ad hoc invoice is created. One invoice per call. No auth header is set - see delivery notes."
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT\n    COALESCE(\n        (SELECT TOP 1 input1.properties.xero_customer_id.[value] FROM input1)\n    ) AS xeroContactId,\n    input2.properties.hs_purchase_order_number AS purchaseOrderNumber,\n    input2.properties.hubspot_owner_id AS ownerId,\n    input2.properties.hs_createdate AS createDate,\n    input2.properties.hs_number AS invoiceNumber,\n    input2.properties.hs_due_date AS dueDate,\n    input2.id AS invoiceId,\n    input2.properties.reference AS reference\nFROM input2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        928,
+        560
+      ],
+      "id": "076dc8ab-4a2b-4152-acba-3bb5f0f4404b",
+      "name": "Append Xero Contact ID",
+      "notesInFlow": true,
+      "notes": "Combines the Xero contact ID with the invoice fields used by Create Xero Invoice and Create Xero Bill."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $json.id }}?associations=companies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        544
+      ],
+      "id": "8587da94-e1fd-48ae-a4ee-f1adfdad1457",
+      "name": "Get Invoice With Company Association",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Re-fetches the invoice with its contact association, to find the contact ID."
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "company",
+        "operation": "get",
+        "companyId": {
+          "__rl": true,
+          "value": "={{ $json.associations.companies.results[0].id }}",
+          "mode": "id"
+        },
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        544
+      ],
+      "id": "b8c7e056-8012-43e7-9194-54f9a96a8f3a",
+      "name": "Get HubSpot Company",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Receive Ad Hoc Invoice Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "rentittoday.app.n8n.cloud",
+            "user-agent": "HubSpot Connect 2.0 (http://dev.hubspot.com/) (namespace: WebhooksPlatformExecution) - AutomationActionsExecutionService-web",
+            "content-length": "40",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "216.157.42.49",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "AU",
+            "cf-ray": "a4cfa1852bf0c0f5-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "216.157.42.49, 104.22.127.37",
+            "x-forwarded-host": "rentittoday.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-82-65d5995466-trfh6",
+            "x-hubspot-correlation-id": "01a1540a-2f10-76b1-8903-8de4c3467cdd",
+            "x-hubspot-origin-hublet": "ap1",
+            "x-hubspot-timeout-millis": "44986",
+            "x-is-trusted": "yes",
+            "x-real-ip": "216.157.42.49"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "state": "WA",
+            "invoice_id": 733792373239
+          },
+          "webhookUrl": "https://rentittoday.app.n8n.cloud/webhook/create-ad-hoc-invoice",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Build Xero Bill Line Items Payload": {
+      "main": [
+        [
+          {
+            "node": "Combine Bill ID And Line Items",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Bill ID And Line Items": {
+      "main": [
+        [
+          {
+            "node": "Update Xero Bill With Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Xero Bill With Line Items": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Create Xero Bill": {
+      "main": [
+        [
+          {
+            "node": "Combine Bill ID And Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Save Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Line Item Xero Asset ID": {
+      "main": [
+        [
+          {
+            "node": "Search HubSpot Asset Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Search HubSpot Asset Record": {
+      "main": [
+        [
+          {
+            "node": "Get Xero Asset Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Loop Over Assets For Registration": {
+      "main": [
+        [
+          {
+            "node": "Build Xero Bill Line Items Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Line Item Xero Asset ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Xero Asset Status to Registered": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Assets For Registration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Xero Asset Details": {
+      "main": [
+        [
+          {
+            "node": "Update Xero Asset Status to Registered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Xero Invoice With Line Items": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Build Xero Line Items Payload": {
+      "main": [
+        [
+          {
+            "node": "Update Xero Invoice With Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Invoice ID and State to Line Items": {
+      "main": [
+        [
+          {
+            "node": "Split Out Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Rental Account by State": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice Details": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice With Line Item Associations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Invoice With Company Association",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Xero Contact ID",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        []
+      ]
+    },
+    "Save Xero Invoice ID To HubSpot": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Create Xero Invoice": {
+      "main": [
+        [
+          {
+            "node": "Attach Invoice ID and State to Line Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save Xero Invoice ID To HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Loop Over Line Items": {
+      "main": [
+        [
+          {
+            "node": "Build Xero Line Items Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Line Item Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Line Items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Assets For Registration",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice With Line Item Associations": {
+      "main": [
+        [
+          {
+            "node": "Attach Invoice ID and State to Line Items",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Line Item Details": {
+      "main": [
+        [
+          {
+            "node": "Resolve Rental Account by State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Receive Ad Hoc Invoice Webhook": {
+      "main": [
+        [
+          {
+            "node": "Save Execution Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Attach Invoice ID and State to Line Items",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Append Xero Contact ID": {
+      "main": [
+        [
+          {
+            "node": "Create Xero Invoice",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Xero Bill",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice With Company Association": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HubSpot Company": {
+      "main": [
+        [
+          {
+            "node": "Append Xero Contact ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "GBIRaHZowF94O4cL",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "26f4c504-af21-43d6-aa14-04ea58d0c5cc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "badd361136705b8339a4999fc691602f7231ea58099f82b3bc20e589e33bbefd"
+  },
+  "nodeGroups": [],
+  "id": "FrSreNi92cYxdSLW",
+  "tags": []
+}

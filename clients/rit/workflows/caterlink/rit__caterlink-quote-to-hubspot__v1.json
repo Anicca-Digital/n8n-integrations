@@ -1,0 +1,1225 @@
+{
+  "name": "RIT - Caterlink Quote→ Create Contact/Company/Deal/Line Item",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "hasAttachments": true
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        848
+      ],
+      "id": "73e5d8f5-c309-416c-be3c-e22606aca96e",
+      "name": "Receive Quote Email",
+      "notesInFlow": true,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "DKZTn5J6hmUcoaFs",
+          "name": "Quote Email Connector"
+        }
+      },
+      "notes": "Polls every minute for emails with attachments."
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {
+          "joinPages": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        144,
+        848
+      ],
+      "id": "7ffa59eb-b46f-4a9f-8916-bc28f71d31bf",
+      "name": "Extract PDF Text",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function splitAddress(line) {\n  if (!line) return { suburb: null, state: null, postcode: null };\n  const m = line.match(/^(.*)\\s+([A-Z]{2,3})\\s+(\\d{4})$/);\n  return m ? { suburb: m[1].trim(), state: m[2], postcode: m[3] } : { suburb: line, state: null, postcode: null };\n}\n\nfunction splitName(full) {\n  if (!full) return { firstName: null, lastName: null };\n  const parts = full.trim().split(/\\s+/);\n  return { firstName: parts[0], lastName: parts.slice(1).join(\" \") || null };\n}\n\nconst ROW_START = /^\\s*(\\d+\\.\\d{2})(?:\\s+(.*))?$/;\nconst ROW_END = /(?:^|\\s)(\\d+)\\.\\d{2}\\s+([\\d,]+\\.\\d{2})\\s+([\\d,]+\\.\\d{2})\\s+([\\d,]+\\.\\d{2})\\s*$/;\nconst CODE_TOKEN = /^[A-Z0-9][A-Z0-9\\-\\/.]*$/;\nconst MODEL_LINE_MAX_TOKENS = 3;\n\nconst tokensOf = (s) => s.trim().split(/\\s+/).filter(Boolean);\nconst clean = (s) => s.replace(/\\s+/g, \" \").trim();\n\nfunction splitModelDescription(lines) {\n  if (lines.length > 1 && tokensOf(lines[0]).length <= MODEL_LINE_MAX_TOKENS) {\n    let i = 0;\n    let model = lines[i].trim();\n    while (/-$/.test(model) && i < lines.length - 2) {\n      i++;\n      model += lines[i].trim();\n    }\n    return { model: clean(model), description: clean(lines.slice(i + 1).join(\" \")) };\n  }\n  const first = tokensOf(lines[0]);\n  let n = 1;\n  while (n < first.length && CODE_TOKEN.test(first[n]) && (first[n].length > 1 || /\\d/.test(first[n]))) n++;\n  const model = first.slice(0, n).join(\" \");\n  const description = [first.slice(n).join(\" \"), ...lines.slice(1)].join(\" \");\n  return { model: clean(model), description: clean(description) };\n}\n\nfunction parseLineItems(text) {\n  const allLines = text.split(\"\\n\");\n  let stop = allLines.findIndex(\n    (l) => /^\\s*\\$[\\d,]+\\.\\d{2}/.test(l) || /Weekly Sub Total/.test(l)\n  );\n  if (stop === -1) stop = allLines.length;\n  const lines = allLines.slice(0, stop);\n\n  const items = [];\n  let cur = null;\n\n  const feed = (chunk) => {\n    const end = chunk.match(ROW_END);\n    if (end) {\n      const prefix = chunk.slice(0, end.index).trim();\n      if (prefix) cur.lines.push(prefix);\n      cur.qty = parseInt(end[1], 10);\n      [cur.rate12Month, cur.rate24Month, cur.rate36Month] = [end[2], end[3], end[4]];\n      const { model, description } = splitModelDescription(cur.lines);\n      items.push({\n        itemNum: cur.itemNum,\n        model,\n        description,\n        qty: cur.qty,\n        rate12Month: cur.rate12Month,\n        rate24Month: cur.rate24Month,\n        rate36Month: cur.rate36Month,\n      });\n      cur = null;\n    } else if (chunk.trim()) {\n      cur.lines.push(chunk.trim());\n    }\n  };\n\n  for (const line of lines) {\n    if (!cur) {\n      const s = line.match(ROW_START);\n      if (!s) continue;\n      cur = { itemNum: String(parseFloat(s[1])), lines: [] };\n      if (s[2]) feed(s[2]);\n    } else {\n      feed(line);\n    }\n  }\n\n  if (cur) {\n    throw new Error(`Failed to parse quote: line item ${cur.itemNum} never reached its qty / rate figures. PDF format may have changed.`);\n  }\n  return items;\n}\n\nfunction parseQuote(rawText) {\n  const text = rawText.replace(/\\r\\n?/g, \"\\n\");\n\n  const deliveryMatch = text.match(/Delivery Address:\\s*([^\\n]+)\\n([^\\n]+)\\n([^\\n]+)\\n/);\n  const deliveryEntityName = deliveryMatch ? deliveryMatch[1].trim() : null;\n  const deliveryStreet = deliveryMatch ? deliveryMatch[2].trim() : null;\n  const deliveryRest = deliveryMatch ? splitAddress(deliveryMatch[3].trim()) : {};\n\n  let quoteDate = null, account = null, proposalNumber = null;\n  if (deliveryMatch) {\n    const afterDelivery = deliveryMatch.index + deliveryMatch[0].length;\n    const contactIdx = text.indexOf(\"Contact:\", afterDelivery);\n    // The proposal number can land on the \"Contact:\" line itself (e.g. \"Contact: 474684\"),\n    // so extend the cluster to the end of that line.\n    let clusterEnd = text.length;\n    if (contactIdx !== -1) {\n      const eol = text.indexOf(\"\\n\", contactIdx);\n      clusterEnd = eol === -1 ? text.length : eol;\n    }\n    const cluster = text.slice(afterDelivery, clusterEnd);\n    quoteDate = (cluster.match(/\\b\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\b/) || [])[0] || null;\n    account = (cluster.match(/\\b[A-Za-z]{2,}\\d+\\b/) || [])[0] || null;\n    proposalNumber = (cluster.replace(/\\d{1,2}\\/\\d{1,2}\\/\\d{4}/g, \"\").match(/\\b\\d{5,7}\\b/) || [])[0] || null;\n  }\n\n  const contactAddrMatch = text.match(/(?<!Delivery )Address:\\s*([^\\n]+)\\n([^\\n]+)\\n([^\\n]+)\\n/);\n  const contactEntityName = contactAddrMatch ? contactAddrMatch[1].trim() : null;\n  const contactStreet = contactAddrMatch ? contactAddrMatch[2].trim() : null;\n  const contactRest = contactAddrMatch ? splitAddress(contactAddrMatch[3].trim()) : {};\n\n  let contactName = null, phone = null, email = null;\n  if (contactAddrMatch) {\n    const afterContactAddr = contactAddrMatch.index + contactAddrMatch[0].length;\n    const boundaryIdx = text.indexOf(\"Thank you for choosing\", afterContactAddr);\n    let cluster = text.slice(afterContactAddr, boundaryIdx === -1 ? text.length : boundaryIdx);\n\n    phone = (cluster.match(/0\\d{3}\\s?\\d{3}\\s?\\d{3}/) || [])[0] || null;\n    email = (cluster.match(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/) || [])[0] || null;\n    if (phone) cluster = cluster.replace(phone, \"\");\n    if (email) cluster = cluster.replace(email, \"\");\n\n    const leftover = cluster.split(\"\\n\").map((l) => l.trim()).filter(Boolean);\n    contactName = leftover[0] || null;\n    if (!email) {\n      const candidate = leftover[1] || null;\n      email = candidate && /^[\\w.+-]+@[\\w-]+\\.[\\w.-]+$/.test(candidate) ? candidate : null;\n    }\n  }\n\n  const subTotalIdx = text.indexOf(\"Weekly Sub Total (Excl. GST):\");\n  let weeklyTotal12 = null, weeklyTotal24 = null, weeklyTotal36 = null;\n  if (subTotalIdx !== -1) {\n    const grab = (str) => [...str.matchAll(/\\$([\\d,]+\\.\\d{2})/g)].map((m) => m[1].replace(/,/g, \"\"));\n    const labelEnd = subTotalIdx + \"Weekly Sub Total (Excl. GST):\".length;\n    // amounts on the same line after the label, else the three just before it\n    const sameLine = grab(text.slice(labelEnd, text.indexOf(\"\\n\", labelEnd) === -1 ? text.length : text.indexOf(\"\\n\", labelEnd)));\n    const amounts = sameLine.length >= 3 ? sameLine : grab(text.slice(Math.max(0, subTotalIdx - 60), subTotalIdx));\n    [weeklyTotal12, weeklyTotal24, weeklyTotal36] = amounts.length >= 3 && sameLine.length >= 3 ? amounts.slice(0, 3) : amounts.slice(-3);\n  }\n\n  const lineItems = parseLineItems(text);\n\n  if (!proposalNumber || lineItems.length === 0) {\n    throw new Error(\n      `Failed to parse quote: proposalNumber=${proposalNumber}, lineItems found=${lineItems.length}. PDF format may have changed.`\n    );\n  }\n\n  return {\n    contact: { ...splitName(contactName), phone, email, street: contactStreet, ...contactRest },\n    company: { name: contactEntityName, account },\n    deal: {\n      proposalNumber,\n      account,\n      quoteDate,\n      deliveryStreet,\n      ...deliveryRest,\n      weeklyTotal12Month: weeklyTotal12,\n      weeklyTotal24Month: weeklyTotal24,\n      weeklyTotal36Month: weeklyTotal36,\n    },\n    lineItems,\n  };\n}\n\nconst text = $input.first().json.text;\nreturn [{ json: parseQuote(text) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        832
+      ],
+      "id": "3c4d9c1a-7bcc-4a2f-b862-53d4380334f8",
+      "name": "Parse Quote PDF",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "notes": "Reads contact, company, deal and line items from the PDF text. Fans out to five parallel branches."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "has-email-cond-001",
+              "leftValue": "={{ $json.contact.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        864,
+        432
+      ],
+      "id": "7a6de55f-48c4-4f9d-b02d-0d291bd1ea68",
+      "name": "Has Contact Email?",
+      "notesInFlow": true,
+      "notes": "False = quote shows a placeholder email. A notice is sent and the rest of the run continues."
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "email": "={{ $json.contact.email }}",
+        "additionalFields": {
+          "city": "={{ $json.contact.suburb }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "account_number",
+                "value": "={{ $json.company.account }}"
+              }
+            ]
+          },
+          "firstName": "={{ $json.contact.firstName }}",
+          "lastName": "={{ $json.contact.lastName }}",
+          "phoneNumber": "={{ $json.contact.phone }}",
+          "postalCode": "={{ $json.contact.postcode }}",
+          "stateRegion": "={{ $json.contact.state }}",
+          "streetAddress": "={{ $json.contact.street }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        288
+      ],
+      "id": "a948f693-aeca-4c48-8e51-6f05c013e48d",
+      "name": "Create or Update Contact",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst parsed = $('Parse Quote PDF').item.json;\nreturn [{\n  json: {\n    message: `Contact has no valid email (quote may show a placeholder like \"TBC\") - contact was not created automatically. Please create the contact manually in HubSpot and link it to the deal.`,\n    poNum: parsed.deal.proposalNumber,\n    description: parsed.contact.firstName ? `${parsed.contact.firstName} ${parsed.contact.lastName || \"\"}`.trim() : \"unknown contact\",\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        480
+      ],
+      "id": "1b9797f4-5cd8-4bf5-949b-a7bef13dc304",
+      "name": "Build No-Email Notice"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/deals/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    {\n      \"filters\": [\n        { \"propertyName\": \"proposal_number\", \"operator\": \"EQ\", \"value\": \"{{ $('Parse Quote PDF').item.json.deal.proposalNumber }}\" }\n      ]\n    }\n  ],\n  \"properties\": [\"proposal_number\", \"hs_object_id\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        720
+      ],
+      "id": "8f0781cd-b651-47e5-b5ca-c31fef3295bf",
+      "name": "Search Deal by Proposal Number",
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "deal-exists-cond-001",
+              "leftValue": "={{ $json.total }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1056,
+        704
+      ],
+      "id": "1a721717-7c6e-4f43-b2b4-941b5602da70",
+      "name": "Deal Found in HubSpot?",
+      "notesInFlow": true,
+      "notes": "True = a deal with this proposal number already exists, so the sender is told and no deal is created."
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "stage": "3350251995",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "street_address",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.deliveryStreet }}"
+              },
+              {
+                "property": "suburb",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.suburb }}"
+              },
+              {
+                "property": "stateregion",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.state }}"
+              },
+              {
+                "property": "postcode",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.postcode }}"
+              },
+              {
+                "property": "proposal_number",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.proposalNumber }}"
+              },
+              {
+                "property": "n12_month_ritwk_weekly_total",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.weeklyTotal12Month }}"
+              },
+              {
+                "property": "n24_month_ritwk_weekly_total",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.weeklyTotal24Month }}"
+              },
+              {
+                "property": "n36_month_ritwk_weekly_total",
+                "value": "={{ $('Parse Quote PDF').item.json.deal.weeklyTotal36Month }}"
+              }
+            ]
+          },
+          "dealName": "={{ $('Parse Quote PDF').item.json.deal.proposalNumber }} - {{ $('Parse Quote PDF').item.json.deal.account }}"
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1232,
+        800
+      ],
+      "id": "2ce7c661-2c43-49cc-958a-815d6f582787",
+      "name": "Create Deal",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e868ed15-a0bf-414d-93a8-2f767b3c001f",
+              "leftValue": "={{ $json.company.account }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        848,
+        192
+      ],
+      "id": "09504f28-50ab-42d2-99c9-4df4612f77f7",
+      "name": "Has Company Name?"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "company",
+        "name": "={{ $('Parse Quote PDF').item.json.company.name }}",
+        "additionalFields": {
+          "companyDomainName": "={{ ['gmail.com','outlook.com'].includes($('Has Company Name?').item.json.contact.email?.split('@')[1]?.toLowerCase()) ? '' : $('Has Company Name?').item.json.contact.email?.split('@')[1] }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "account_number",
+                "value": "={{ $('Parse Quote PDF').item.json.company.account }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1488,
+        112
+      ],
+      "id": "4097a3f1-8ff3-43f0-9119-e806f15cc622",
+      "name": "Create Company",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/contacts/{{ $json.contactId }}/associations/companies/{{ $json.companyId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "[\n  {\n    \"associationCategory\": \"HUBSPOT_DEFINED\",\n    \"associationTypeId\": 931\n  }\n]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2304,
+        112
+      ],
+      "id": "fa46242f-cdae-44c7-ab4c-8f1835c3cf89",
+      "name": "Associate Contact with Company",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Failures go to Raise Error."
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/deals/{{ $json.dealId }}/associations/default/companies/{{ $json.companyId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2304,
+        272
+      ],
+      "id": "d8cc64f9-c006-47c8-9592-e8f1d14299fb",
+      "name": "Associate Deal with Company",
+      "executeOnce": false,
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Failures go to Raise Error."
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/contacts/{{ $json.contactId }}/associations/deals/{{ $json.dealId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "[\n  {\n    \"associationCategory\": \"USER_DEFINED\",\n    \"associationTypeId\": 29\n  }\n]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2304,
+        432
+      ],
+      "id": "d21f46bf-1d8d-49ed-8068-75a6b8644baa",
+      "name": "Associate Contact with Deal",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Failures go to Raise Error."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "lineItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        832,
+        1008
+      ],
+      "id": "0b5655cc-df11-45e3-b304-e7dff4116a12",
+      "name": "Split Line Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nconst rateFields = ['rate12Month', 'rate24Month', 'rate36Month'];\n\nfor (const entry of $input.all()) {\n  const item = entry.json;\n  const qty = item.qty || 1;\n\n  // pre-divide rates once per source item\n  const dividedRates = {};\n  for (const field of rateFields) {\n    const raw = item[field];\n    if (raw !== undefined && raw !== null && raw !== '') {\n      const num = parseFloat(raw);\n      dividedRates[field] = qty > 0 ? +(num / qty).toFixed(2) : num;\n    }\n  }\n\n  for (let i = 1; i <= qty; i++) {\n    output.push({\n      json: {\n        ...item,\n        ...dividedRates,\n        qty: 1,\n        unitIndex: i,\n        totalUnits: qty\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        992
+      ],
+      "id": "e93d77d2-4415-4d04-a5d8-21aefbe12a0a",
+      "name": "Duplicate Line Item Rows by Quantity",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "notes": "Splits each line into one row per unit, dividing the rates by quantity."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/line_items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"name\": \"{{ $json.description }}\",\n    \"quantity\": \"{{ $json.qty }}\",\n    \"hs_sku\": \"{{ $json.model }}\",\n    \"n12_month_rit__wk\": \"{{ $json.rate12Month }}\",\n    \"n24_month_rit__wk\": \"{{ $json.rate24Month }}\",\n    \"n36_month_rit__wk\": \"{{ $json.rate36Month }}\",\n    \"price\": 0\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2064,
+        992
+      ],
+      "id": "00d6cf51-c397-4741-8ec7-18a29a35891f",
+      "name": "Create Line Item",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/deals/{{ $('Loop Over Line Item Rows').item.json.dealId }}/associations/default/line_items/{{ $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2288,
+        1008
+      ],
+      "id": "adac4e3e-e2bc-4960-9139-da4f200de6c7",
+      "name": "Associate Line Item with Deal",
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": "=1",
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1824,
+        976
+      ],
+      "id": "3dc00130-072a-4ec3-8ada-4ba863d5e40a",
+      "name": "Loop Over Line Item Rows"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e868ed15-a0bf-414d-93a8-2f767b3c001f",
+              "leftValue": "={{ $json.total }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1248,
+        48
+      ],
+      "id": "114d523f-911b-4e30-adf0-04ebc33e4d57",
+      "name": "Company Found in HubSpot?"
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "numberInputs": 7,
+        "query": "SELECT\n  (SELECT companyId FROM input1\n   UNION ALL SELECT companyId FROM input2\n   UNION ALL SELECT companyId FROM input3\n   LIMIT 1) AS companyId,\n  (SELECT vid FROM input4\n   UNION ALL SELECT vid FROM input5\n   LIMIT 1) AS contactId,\n  (SELECT dealId FROM input6\n   UNION ALL SELECT dealId FROM input7\n   LIMIT 1) AS dealId\nFROM (\n  SELECT 1 AS dummy FROM input1\n  UNION ALL SELECT 1 FROM input2\n  UNION ALL SELECT 1 FROM input3\n  UNION ALL SELECT 1 FROM input4\n  UNION ALL SELECT 1 FROM input5\n  UNION ALL SELECT 1 FROM input6\n  UNION ALL SELECT 1 FROM input7\n)\nLIMIT 1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        288
+      ],
+      "id": "63275d95-73a9-4ddb-8eb8-3717c42f523f",
+      "name": "Merge Deal/Company/Contact IDs",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "notes": "Collects the company, contact and deal IDs from whichever branch ran."
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT input2.*, input1.dealId AS dealId\nFROM input1, input2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1104,
+        992
+      ],
+      "id": "ef387626-676c-46d3-a889-b8027f401a19",
+      "name": "Attach Deal ID to Line Items",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "company",
+        "operation": "update",
+        "companyId": {
+          "__rl": true,
+          "value": "={{ $json.results[0].id }}",
+          "mode": "id"
+        },
+        "updateFields": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1488,
+        -64
+      ],
+      "id": "44ee3c58-d6f5-4ce4-bffc-245bc49271fd",
+      "name": "Update Company",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "No fields are updated. This node only passes the existing company ID on."
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Filter Outlook/Gmail attachments down to a single PDF whose filename\n * matches \"RIT Quote <number>.pdf\" exactly, e.g. \"RIT Quote 472536.pdf\".\n *\n * Input: item with binary keys attachment_0, attachment_1, ... (n8n binary object).\n * Output: single item, binary property \"data\" = the matched file. No match = no output item.\n */\nconst NAME_PATTERN = /^RIT\\s+Quote\\s+\\d+\\.pdf$/i; // \"RIT Quote <number>.pdf\" exactly\n\nconst item = $input.first();\nconst binary = item.binary || {};\n\nconst candidates = Object.entries(binary).filter(([key, file]) => {\n  const isPdf = file.mimeType === 'application/pdf' || /\\.pdf$/i.test(file.fileName || '');\n  const nameOk = NAME_PATTERN.test((file.fileName || '').trim());\n  return isPdf && nameOk;\n});\n\nif (candidates.length === 0) {\n  return []; // nothing matched, no output\n}\n\nconst [, file] = candidates[0];\n\nreturn [\n  {\n    json: {\n      fileName: file.fileName,\n      mimeType: file.mimeType,\n    },\n    binary: {\n      data: file,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        848
+      ],
+      "id": "2cbb1566-f1a9-40c9-bf17-b1127b918f2a",
+      "name": "Select Matching Quote PDF Attachment",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "notes": "Keeps only a PDF named 'RIT Quote <number>.pdf'. No match = no output, so other emails are ignored."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/companies/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    {\n      \"filters\": [\n        { \"propertyName\": \"account_number\", \"operator\": \"EQ\", \"value\": \"{{ $json.company.account }}\" }\n      ]\n    }\n  ],\n  \"properties\": [\"name\", \"hs_object_id\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        64
+      ],
+      "id": "44323f5e-4830-489e-afc7-576fd2906819",
+      "name": "Search Company",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "poNum",
+              "value": "={{ $json.deal.proposalNumber }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        576,
+        576
+      ],
+      "id": "c91a3b9f-136d-4427-832a-bbccbcbf5c9c",
+      "name": "Save Execution Data",
+      "notesInFlow": true,
+      "notes": "Saves the proposal number against the execution so it is searchable."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs alongside the sender notice on a genuine failure. Throwing fails the execution so the shared Error Workflow emails the team.\nconst src = (typeof $prevNode !== 'undefined' && $prevNode && $prevNode.name) || 'unknown step';\nconst err = $input.first().json.error || {};\nlet proposal = 'unknown';\ntry { proposal = $('Parse Quote PDF').first().json.deal.proposalNumber || 'unknown'; } catch (e) {}\nthrow new Error(\n  `Caterlink quote ${proposal} failed at \"${src}\": ${err.message || err.description || JSON.stringify(err).slice(0, 300)}`\n);"
+      },
+      "id": "64673530-7101-46df-96dc-ed9375631aad",
+      "name": "Raise Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        704
+      ],
+      "notesInFlow": true,
+      "notes": "Fails the run on a genuine error so the shared Error Workflow emails the team. Not used for the duplicate-deal or no-email notices."
+    }
+  ],
+  "pinData": {
+    "Receive Quote Email": [
+      {
+        "json": {
+          "id": "AAMkADM2MjkzYjljLTYyMmMtNGQ5MC05MzgxLTkyZTc2Mzg5ODQwYgBGAAAAAAClcC-z61oXRIyJmos60kvUBwClrNLWEWmWTrvmIG976ooiAAAAAAEMAAClrNLWEWmWTrvmIG976ooiAAAq8BWrAAA=",
+          "conversationId": "AAQkADM2MjkzYjljLTYyMmMtNGQ5MC05MzgxLTkyZTc2Mzg5ODQwYgAQAIao83y5_rxLu4yJ_dwRvn8=",
+          "subject": "",
+          "bodyPreview": "Martina Woods\r\nRIT Manager     ​​​​\r\nDirect: (08) 9492 8203\r\nRIT Website\r\n\r\nPerth Office & Showroom\r\n26 Howe Street, Osborne Park, WA 6017\r\n(08) 9492 8200\r\n\r\nMelbourne Office & Showroom\r\n14 Glenvale Crescent, Mulgrave,  VIC 3170\r\n(03) 9131 2100",
+          "from": "martina@rentittoday.com.au",
+          "to": [
+            "quotes@rentittoday.com.au"
+          ],
+          "categories": [],
+          "hasAttachments": true
+        },
+        "binary": {
+          "attachment_0": {
+            "mimeType": "application/pdf",
+            "fileType": "pdf",
+            "fileExtension": "pdf",
+            "data": "filesystem-v2",
+            "fileName": "RIT QUOTE 474684.pdf",
+            "id": "filesystem-v2:workflows/ChG0yvC0HYOsbkF7/executions/temp/binary_data/5452eae4-74db-4979-8e1d-2276739e91db",
+            "fileSize": "54 kB",
+            "bytes": 54002
+          },
+          "attachment_1": {
+            "mimeType": "image/png",
+            "fileType": "image",
+            "fileExtension": "png",
+            "data": "filesystem-v2",
+            "fileName": "image981299.png",
+            "id": "filesystem-v2:workflows/ChG0yvC0HYOsbkF7/executions/temp/binary_data/e5bb5145-a262-49de-95da-aa1efeab4c93",
+            "fileSize": "284 B",
+            "bytes": 284
+          },
+          "attachment_2": {
+            "mimeType": "image/jpeg",
+            "fileType": "image",
+            "fileExtension": "jpg",
+            "data": "filesystem-v2",
+            "fileName": "image850031.jpg",
+            "id": "filesystem-v2:workflows/ChG0yvC0HYOsbkF7/executions/temp/binary_data/4e1095e3-7c73-4ddc-a540-9e730845ed0a",
+            "fileSize": "15.8 kB",
+            "bytes": 15758
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Receive Quote Email": {
+      "main": [
+        [
+          {
+            "node": "Select Matching Quote PDF Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Parse Quote PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Quote PDF": {
+      "main": [
+        [
+          {
+            "node": "Has Contact Email?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split Line Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search Deal by Proposal Number",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save Execution Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Contact Email?": {
+      "main": [
+        [
+          {
+            "node": "Create or Update Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build No-Email Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Update Contact": {
+      "main": [
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 3
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build No-Email Notice": {
+      "main": [
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Search Deal by Proposal Number": {
+      "main": [
+        [
+          {
+            "node": "Deal Found in HubSpot?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal Found in HubSpot?": {
+      "main": [
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 5
+          }
+        ],
+        [
+          {
+            "node": "Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Deal": {
+      "main": [
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 6
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Company Name?": {
+      "main": [
+        [
+          {
+            "node": "Search Company",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Create Company": {
+      "main": [
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Line Items": {
+      "main": [
+        [
+          {
+            "node": "Attach Deal ID to Line Items",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Duplicate Line Item Rows by Quantity": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Item Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Line Item": {
+      "main": [
+        [
+          {
+            "node": "Associate Line Item with Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Line Item Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Line Item with Deal": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Item Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Line Item Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Line Item Rows": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Create Line Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Found in HubSpot?": {
+      "main": [
+        [
+          {
+            "node": "Update Company",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Deal/Company/Contact IDs": {
+      "main": [
+        [
+          {
+            "node": "Attach Deal ID to Line Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Associate Contact with Deal",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Associate Deal with Company",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Associate Contact with Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Deal ID to Line Items": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Line Item Rows by Quantity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Company": {
+      "main": [
+        [
+          {
+            "node": "Merge Deal/Company/Contact IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Matching Quote PDF Attachment": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Company": {
+      "main": [
+        [
+          {
+            "node": "Company Found in HubSpot?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Contact with Company": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Deal with Company": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Contact with Deal": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Has Company Name?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "GBIRaHZowF94O4cL",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "6e8850dc-e892-4607-87e9-5ccab889dd42",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "badd361136705b8339a4999fc691602f7231ea58099f82b3bc20e589e33bbefd"
+  },
+  "nodeGroups": [],
+  "id": "ChG0yvC0HYOsbkF7",
+  "tags": []
+}

@@ -1,0 +1,632 @@
+{
+  "name": "RIT - HubSpot Asset Created -> Xero Fixed Asset Create",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-asset",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        5376,
+        2784
+      ],
+      "id": "d5388f1c-488b-4234-9f9f-b77a5c5b81c7",
+      "name": "Receive Closed Won Deal Webhook",
+      "webhookId": "6a886eb3-d54c-483b-acf7-cd801ae8b8d0",
+      "notesInFlow": true,
+      "notes": "Called by a HubSpot workflow when a deal reaches Closed Won. No auth header is set - see delivery notes."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        5968,
+        2784
+      ],
+      "id": "9e596ab8-3642-47eb-85ee-71faaf6149e5",
+      "name": "Split Out Associated Assets",
+      "notesInFlow": true,
+      "notes": "One item per associated asset. Fan-out starts here."
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        6368,
+        2752
+      ],
+      "id": "56b573f4-b992-42d2-a2bb-54554f3db382",
+      "name": "Loop Over Assets"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "operation": "update",
+        "dealId": {
+          "__rl": true,
+          "value": "={{ $('Receive Closed Won Deal Webhook').item.json.body.hs_object_id }}",
+          "mode": "id"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "asset_created",
+                "value": "true"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        6576,
+        2624
+      ],
+      "id": "462d57b0-79ef-4821-ae17-51710ebb6bf7",
+      "name": "Mark Deal Asset Created",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Runs after the loop finishes. Ticks asset_created on the deal."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/deals/{{ $json.body.hs_object_id }}/associations/2-217972099",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5760,
+        2784
+      ],
+      "id": "8c1efeb7-53af-418c-9133-72d2ff3232b3",
+      "name": "Get Associated Assets",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Lists the asset records associated with the deal."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/2-217972099/{{ $json.toObjectId }}?properties=xero_asset_id,name,description,price,asset_number",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6576,
+        2784
+      ],
+      "id": "ff595ec9-28d5-493a-9620-883b05552a8f",
+      "name": "Get Asset Details",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/assets.xro/1.0/Assets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  assetName: $json.properties.name,\n  assetNumber: $json.properties.asset_number,\n  assetTypeId: $('Loop Over Assets').item.json.assetTypeId,\n  purchasePrice: Number($json.properties.price) || 0,\n  assetStatus: \"Draft\",\n  description: $json.properties.description\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7072,
+        2768
+      ],
+      "id": "aa4b42d8-30e3-4f93-817a-90a743ff54f8",
+      "name": "Create Fixed Asset in Xero",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Creates a Draft fixed asset. Failures go to Normalize Error."
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Matches a state/region against a hardcoded list of Xero Asset Types\n * and returns the matching assetTypeId. Falls back to the \"Legacy\"\n * asset type if no exact region match is found.\n */\n\n// ==== ASSET TYPES (hardcoded) ====\nconst assetTypes = [\n  {\n    assetTypeId: 'df53318e-024d-4762-b99c-ac4fce94e910',\n    assetTypeName: 'Legacy Rental Asset',\n  },\n  {\n    assetTypeId: '034b445f-23dd-4b76-a96c-15b9258bc612',\n    assetTypeName: 'VIC Rental Asset',\n  },\n  {\n    assetTypeId: '73e83679-cfee-4a78-ab6b-587c271d24f4',\n    assetTypeName: 'WA Rental Asset',\n  },\n];\n\n// ==== CONFIG ====\n// Region/state value comes from the incoming webhook body (see the pinned\n// example item on the trigger node: body.stateregion).\nconst region = $input.first().json.body.stateregion;\n\nif (!region) {\n  throw new Error('No region/state value provided — check the CONFIG section of this node.');\n}\n\nconst normalize = (s) => (s || '').toString().trim().toLowerCase();\nconst regionNorm = normalize(region);\n\n// Exact-contains match on asset type name (e.g. \"VIC\" matches \"VIC Rental Asset\")\nconst match = assetTypes.find(a => normalize(a.assetTypeName).includes(regionNorm));\n\n// Fallback: the Legacy asset type\nconst legacy = assetTypes.find(a => normalize(a.assetTypeName).includes('legacy'));\n\nconst result = match || legacy;\n\nif (!result) {\n  throw new Error(\n    `No asset type found matching region \"${region}\", and no Legacy fallback asset type exists.`\n  );\n}\n\nreturn [\n  {\n    json: {\n      assetTypeId: result.assetTypeId,\n      assetTypeName: result.assetTypeName,\n      matchedByRegion: !!match,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5776,
+        2640
+      ],
+      "id": "7ad6dc34-2686-4235-a577-f85dff2cb7b3",
+      "name": "Resolve Xero Asset Type By State",
+      "notesInFlow": true,
+      "notes": "Maps the deal's state to a Xero asset type. Falls back to Legacy."
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT\n  input2.*,\n  input1.assetTypeId\nFROM input1, input2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        6192,
+        2752
+      ],
+      "id": "2dbaaddd-2b68-42fb-8a39-19c8209c3f73",
+      "name": "Attach Asset Type ID to Assets"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/2-217972099/{{ $('Get Asset Details').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"xero_asset_id\": \"{{ $('Create Fixed Asset in Xero').item.json.assetId }}\",\n    \"xero_item_id\": \"{{ $json.Id }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7552,
+        2752
+      ],
+      "id": "16812bc1-afe3-46bb-9a10-889f7ff72cdb",
+      "name": "Save Xero IDs To HubSpot Asset",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Writes the Xero asset ID and item ID back to the HubSpot asset."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "/**\n * Normalizes error context from whichever node failed (HubSpot fetch,\n * Xero asset/item creation, write-back) into one item for Raise Error.\n */\nfunction safeGet(fn, fallback) {\n  try {\n    const val = fn();\n    return val === undefined || val === null ? fallback : val;\n  } catch (e) {\n    return fallback;\n  }\n}\n\nconst rawError = $json.error;\nlet errorMessage =\n  typeof rawError === \"string\"\n    ? rawError\n    : rawError?.message || $json.message || \"Unknown error - check execution log\";\nerrorMessage = errorMessage.replace(/\\s*\\[line \\d+\\]\\s*$/i, \"\");\n\nconst failedNode = (typeof $prevNode !== 'undefined' && $prevNode && $prevNode.name) || \"unknown\";\nconst assetId = safeGet(() => $('Get Asset Details').item.json.id, \"unknown\");\nconst serialNumber = safeGet(() => $('Get Asset Details').item.json.properties.serial_number, \"\");\nconst dealId = safeGet(() => $('Receive Closed Won Deal Webhook').first().json.body.hs_object_id, \"unknown\");\n\nreturn { json: { errorMessage, failedNode, assetId, serialNumber, dealId } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6736,
+        3024
+      ],
+      "id": "d9997165-8604-45c2-997d-a9e3efdac5c2",
+      "name": "Normalize Error",
+      "notesInFlow": true,
+      "notes": "Collects the failed step, error message, asset and deal into one item for Raise Error."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/api.xro/2.0/Items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"code\": \"{{ $json.assetNumber }}\",\n  \"name\": \"{{ $json.assetName.slice(0, 50) }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7312,
+        2752
+      ],
+      "id": "da91967b-e454-4bd4-bbfe-ce2d23360b6e",
+      "name": "Create Xero Item",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Creates the matching Xero inventory item (code = asset number)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9bf23a7a-5433-4fbe-a799-c3ce3fe36770",
+              "leftValue": "={{ $json.properties.xero_asset_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "538cb843-9dd5-4c35-b0b9-6728ec910198",
+              "leftValue": "={{ $json.properties.xero_asset_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6800,
+        2784
+      ],
+      "id": "501f31a8-2a8c-4848-8035-4ac1fc00f3ec",
+      "name": "Xero Asset Already Exists?",
+      "notesInFlow": true,
+      "notes": "True = the HubSpot asset already has a Xero asset ID, so it is skipped."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "ID",
+              "value": "={{ $json.body.hs_object_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        5568,
+        2784
+      ],
+      "id": "4aa53e8e-75c2-4d34-8e14-5e22b4a75210",
+      "name": "Save Execution Data",
+      "notesInFlow": true,
+      "notes": "Saves the deal ID against the execution so it is searchable."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final step of the error path. Throwing fails the execution so the shared Error Workflow emails the team.\nlet ctx = {};\ntry { ctx = $('Normalize Error').first().json; } catch (e) {}\nconst serial = ctx.serialNumber ? ` (serial ${ctx.serialNumber})` : '';\nconst hint = ctx.failedNode === 'Create Fixed Asset in Xero'\n  ? ' Check the Asset Number is unique in Xero before re-enrolling the deal.'\n  : '';\nthrow new Error(\n  `Xero asset sync failed at \"${ctx.failedNode || 'unknown step'}\" for HubSpot asset ${ctx.assetId || 'unknown'}${serial} on deal ${ctx.dealId || 'unknown'}: ${ctx.errorMessage || 'see execution log'}.${hint}`\n);"
+      },
+      "id": "e9803a19-a61c-48ee-b80b-b560463c46b0",
+      "name": "Raise Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6928,
+        3024
+      ],
+      "notesInFlow": true,
+      "notes": "Fails the run so the shared Error Workflow emails the team."
+    }
+  ],
+  "pinData": {
+    "Receive Closed Won Deal Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "rentittoday.app.n8n.cloud",
+            "user-agent": "HubSpot Connect 2.0 (http://dev.hubspot.com/) (namespace: WebhooksPlatformExecution) - AutomationActionsExecutionService-web",
+            "content-length": "48",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "216.157.42.34",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "AU",
+            "cf-ray": "a554176fd8cedb4d-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "216.157.42.34, 162.158.168.140",
+            "x-forwarded-host": "rentittoday.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-82-65d5995466-hgsrx",
+            "x-hubspot-timeout-millis": "44990",
+            "x-is-trusted": "yes",
+            "x-real-ip": "216.157.42.34"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "stateregion": "WA",
+            "hs_object_id": 305245806056
+          },
+          "webhookUrl": "https://rentittoday.app.n8n.cloud/webhook/create-asset",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Receive Closed Won Deal Webhook": {
+      "main": [
+        [
+          {
+            "node": "Resolve Xero Asset Type By State",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save Execution Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Associated Assets": {
+      "main": [
+        [
+          {
+            "node": "Attach Asset Type ID to Assets",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Loop Over Assets": {
+      "main": [
+        [
+          {
+            "node": "Mark Deal Asset Created",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Asset Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Associated Assets": {
+      "main": [
+        [
+          {
+            "node": "Split Out Associated Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Asset Details": {
+      "main": [
+        [
+          {
+            "node": "Xero Asset Already Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Fixed Asset in Xero": {
+      "main": [
+        [
+          {
+            "node": "Create Xero Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Xero Asset Type By State": {
+      "main": [
+        [
+          {
+            "node": "Attach Asset Type ID to Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Asset Type ID to Assets": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Xero IDs To HubSpot Asset": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Assets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Error": {
+      "main": [
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Xero Item": {
+      "main": [
+        [
+          {
+            "node": "Save Xero IDs To HubSpot Asset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xero Asset Already Exists?": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Assets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Fixed Asset in Xero",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Get Associated Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "GBIRaHZowF94O4cL",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "7d48ba3a-8a59-4b4f-85ea-ba620c981d94",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "badd361136705b8339a4999fc691602f7231ea58099f82b3bc20e589e33bbefd"
+  },
+  "nodeGroups": [],
+  "id": "a6u3OZCpcVRIOodW",
+  "tags": []
+}

@@ -1,0 +1,980 @@
+{
+  "name": "RIT - HubSpot Deposit → Xero Invoice Create",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "operation": "get",
+        "contactId": {
+          "__rl": true,
+          "value": "={{ $json.associations.contacts.results[0].id }}",
+          "mode": "id"
+        },
+        "additionalFields": {
+          "propertiesCollection": {
+            "propertiesValues": {
+              "properties": [
+                "abn__acn",
+                "business_address",
+                "business_address_city",
+                "business_address_line_2",
+                "business_address_postal_code",
+                "business_address_state",
+                "business_phone",
+                "address",
+                "address_line_2",
+                "email",
+                "state",
+                "city",
+                "country",
+                "zip",
+                "phone",
+                "firstname",
+                "lastname",
+                "xero_contact_id",
+                "account_number"
+              ],
+              "propertyMode": "valueOnly"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        6272,
+        2976
+      ],
+      "id": "044cec1d-6f9d-40a3-a343-007583d24f44",
+      "name": "Get HubSpot Contact",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $('Get Invoice Details').item.json.id }}?associations=contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6048,
+        2976
+      ],
+      "id": "e6d1ec16-ead9-4a95-b3cb-484183213fc4",
+      "name": "Get Invoice With Contact Association",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Re-fetches the invoice with its contact association, to find the contact ID."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/line_items/{{ $json['associations[\\'line items\\'].results'].id }}?properties=amount,quantity,name,asset_number,xero_asset_id,xero_item_id,description",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7008,
+        3328
+      ],
+      "id": "03734441-bc09-41e7-902c-178ef594882c",
+      "name": "Get Line Item Details",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $json.id }}?associations=line_items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6112,
+        3312
+      ],
+      "id": "3002054d-ebe3-4f00-b1b4-805732183087",
+      "name": "Get Invoice With Line Item Associations",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Re-fetches the invoice with its line item associations, to list the line items."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "35275086-6cc1-4a94-9702-1eb9632c3364",
+              "leftValue": "={{ $('Get HubSpot Company').item.json.properties.xero_customer_id.value }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "ignoreCase": false
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6480,
+        2976
+      ],
+      "id": "60355f36-412e-448e-bac2-aee3ad93df52",
+      "name": "Has Xero Contact ID?",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "numberInputs": 3,
+        "query": "SELECT\n  COALESCE(\n    input1.Contacts->0->ContactID,\n    input2.properties->xero_customer_id->[value]\n  ) AS xeroContactId,\n  input3.properties->hs_purchase_order_number AS purchaseOrderNumber,\n  input3.properties->hubspot_owner_id AS ownerId,\n  input3.properties->hs_createdate AS createDate,\n  input3.properties->hs_number AS invoiceNumber,\n  input3.properties->hs_due_date AS dueDate,\n  input3.id AS invoiceId\nFROM input3\nLEFT JOIN input1 ON 1 = 1\nLEFT JOIN input2 ON 1 = 1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        7216,
+        2880
+      ],
+      "id": "89854529-5521-4f82-8935-46e252e58efa",
+      "name": "Append Xero Contact ID",
+      "notesInFlow": true,
+      "notes": "Combines the Xero contact ID with the invoice fields used by Create Xero Invoice."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "associations['line items'].results",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "InvoiceID, state",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        6560,
+        3312
+      ],
+      "id": "71995412-8c2d-441d-a013-c7164cdb0afa",
+      "name": "Split Out Line Items"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        6784,
+        3312
+      ],
+      "id": "01f61002-a96b-4619-b640-42ca03aa462e",
+      "name": "Loop Over Line Items"
+    },
+    {
+      "parameters": {
+        "organizationId": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34",
+        "type": "ACCREC",
+        "contactId": "={{ $json.xeroContactId }}",
+        "lineItemsUi": {
+          "lineItemsValues": []
+        },
+        "additionalFields": {
+          "brandingThemeId": "d6390f4d-9d01-45e3-857f-65eac584f76d",
+          "currency": "AUD",
+          "date": "={{ $json.createDate }}",
+          "dueDate": "={{ $json.dueDate }}",
+          "invoiceNumber": "={{ $json.invoiceNumber }}",
+          "reference": "={{ $json.purchaseOrderNumber }}",
+          "status": "DRAFT"
+        }
+      },
+      "type": "n8n-nodes-base.xero",
+      "typeVersion": 1,
+      "position": [
+        7424,
+        2896
+      ],
+      "id": "0c1853d3-b227-4c72-b118-193d734d7892",
+      "name": "Create Xero Invoice",
+      "notesInFlow": true,
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "MzphtETVBeBH9l4U",
+          "name": "RIT Xero"
+        }
+      },
+      "notes": "Creates a DRAFT invoice with no lines. Lines are added later by Update Xero Invoice With Line Items."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $('Append Xero Contact ID').item.json.invoiceId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"xero_invoice_id\": \"{{ $json.InvoiceID }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7664,
+        2896
+      ],
+      "id": "cfca9a2d-9d00-4028-a193-4ade194d534d",
+      "name": "Save Xero Invoice ID To HubSpot",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Writes the new Xero InvoiceID to xero_invoice_id on the HubSpot invoice."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/invoices/{{ $json.body.invoice_id }}?properties=hs_purchase_order_number,hubspot_owner_id,hs_number,hs_due_date",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5344,
+        3136
+      ],
+      "id": "d9c23aac-e601-44f4-8ffb-c89d7e4ba4e4",
+      "name": "Get Invoice Details",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Fetches the HubSpot invoice (PO number, owner, number, due date). Output fans out to three parallel branches: contact, line items, and the final merge."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ACCOUNTS = [\n  { accountId: 'WA1106', name: 'Secutiry Deposits (WA)' },\n  { accountId: 'VIC1106', name: 'Secutiry Deposits (VIC)' },\n  { accountId: '1106', name: 'Secutiry Deposits (Legacy)' },\n];\nconst DEFAULT_ACCOUNT_ID = '1106';\n\nfor (const item of $input.all()) {\n  let region = null;\n  try {\n    region = $('Loop Over Line Items').item.json.state ?? null;\n  } catch (e) {\n    console.log('Could not resolve item from Loop Through Line Items:', e.message);\n  }\n\n  if (region == null) {\n    console.log('⚠ No state found on the Loop Through Line Items item — region will be null.');\n  }\n\n  const matchedAccount = region ? ACCOUNTS.find((a) => a.name.includes(region)) : null;\n\n  item.json.region = region;\n  item.json.account_id = matchedAccount ? matchedAccount.accountId : DEFAULT_ACCOUNT_ID;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7232,
+        3328
+      ],
+      "id": "d0372ace-649f-41ff-ace8-fc9c3d120840",
+      "name": "Resolve Deposit Account by State",
+      "notesInFlow": true,
+      "notes": "Picks the Xero deposit account from the line item's state. Falls back to 1106 (legacy)."
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "numberInputs": 3,
+        "query": "SELECT\n  input2.*,\n  input1.InvoiceID,\n  input3.body.state AS state\nFROM input2, input1, input3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        6368,
+        3296
+      ],
+      "id": "511dd9a9-4934-46e7-a4ee-d98399980f0b",
+      "name": "Attach Invoice ID and State to Line Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs once after the loop finishes (Loop Through Line Items \"done\" output, index 0).\n// Builds the full Xero LineItems array from every line item processed during the loop.\nconst items = $input.all();\n\nconst lineItems = items.map((item) => ({\n  Description: item.json.properties.asset_number + \" | Security Deposit | \" + item.json.properties.name,\n  Quantity: 8,\n  UnitAmount: parseFloat(item.json.properties.amount) / 8,\n  ItemCode: item.json.properties.asset_number,\n  AccountCode: item.json.account_id,\n  LineAmount: parseFloat(item.json.properties.amount),\n}));\n\n// InvoiceID is constant across all line items for this run - pull it from the\n// original Loop Through Line Items output, since the current items now hold the\n// HubSpot line item fetch response instead (InvoiceID doesn't survive that call).\nconst invoiceId = $('Loop Over Line Items').first().json.InvoiceID;\n\nreturn [{ json: { invoiceId, lineItems } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7360,
+        3184
+      ],
+      "id": "ba2213bc-0e3b-49bb-8b03-cfb567c078c5",
+      "name": "Build Xero Line Items Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.xero.com/api.xro/2.0/Invoices/{{ $('Attach Invoice ID and State to Line Items').item.json.InvoiceID }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ InvoiceID: $json.invoiceId, LineItems: $json.lineItems }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7584,
+        3184
+      ],
+      "id": "4aa54dcd-fac8-4c83-9ec5-1b45fbb3dc2b",
+      "name": "Update Xero Invoice With Line Items",
+      "notesInFlow": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      },
+      "notes": "One call after the loop finishes, sending every line item at once."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-deposit-invoice",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        4992,
+        3136
+      ],
+      "id": "3d84e7ab-9f16-4adf-b9da-1369b6e568d5",
+      "name": "Receive Deposit Invoice Webhook",
+      "webhookId": "e1933c07-45c4-45ac-9d49-af3d431c188f",
+      "notesInFlow": true,
+      "notes": "Called by a HubSpot workflow webhook action when a deposit or ad hoc invoice is created. One invoice per call. No auth header is set - see delivery notes."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "ID",
+              "value": "={{ $json.body.invoice_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        5184,
+        3136
+      ],
+      "id": "79388720-9041-4bbf-bfbd-2dafdd7fde9b",
+      "name": "Save Execution Data",
+      "notesInFlow": true,
+      "notes": "Saves the HubSpot invoice ID against the execution so it is searchable."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/objects/2026-09/0-53/{{ $json.id }}?associations=companies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5632,
+        2976
+      ],
+      "id": "475319b7-f1f5-4186-97ad-eb73c98cc569",
+      "name": "Get Invoice With Company Association",
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "notes": "Re-fetches the invoice with its contact association, to find the contact ID."
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "company",
+        "operation": "get",
+        "companyId": {
+          "__rl": true,
+          "value": "={{ $json.associations.companies.results[0].id }}",
+          "mode": "id"
+        },
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        5856,
+        2976
+      ],
+      "id": "7503c5e6-3927-4227-925a-c879d1c8dab7",
+      "name": "Get HubSpot Company",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "get",
+        "organizationId": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34",
+        "contactId": "={{ $('Get HubSpot Company').item.json.properties.xero_customer_id.value }}"
+      },
+      "type": "n8n-nodes-base.xero",
+      "typeVersion": 1,
+      "position": [
+        6736,
+        2800
+      ],
+      "id": "73801dd9-7678-4c73-a849-3928c92b72a7",
+      "name": "Get a contact",
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "MzphtETVBeBH9l4U",
+          "name": "RIT Xero"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/api.xro/2.0/Contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Xero-tenant-id",
+              "value": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const existing = $('Get a contact').item.json.ContactPersons || [];\n  const email = $('Get HubSpot Contact').item.json.properties.email.value;\n  const already = existing.some(p => (p.EmailAddress || '').toLowerCase() === email.toLowerCase());\n  const persons = already ? existing : existing.concat([{\n    FirstName: $('Get HubSpot Contact').item.json.properties.firstname.value,\n    LastName: $('Get HubSpot Contact').item.json.properties.lastname.value,\n    EmailAddress: email,\n    IncludeInEmails: true\n  }]);\n  return JSON.stringify({ Contacts: [{ ContactID: $('Get a contact').item.json.ContactID, ContactPersons: persons }] });\n})() }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6976,
+        2800
+      ],
+      "id": "9ea8ddd3-b046-49f4-9c64-a52691fd9317",
+      "name": "Add Person to Xero Contact",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "uddhyMSOvCMD5LeS",
+          "name": "Xero Additional Scope"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "organizationId": "1e9660fb-45a7-4a9b-9158-cc54c9e78f34",
+        "name": "={{ $('Get HubSpot Contact').item.json.properties.legal_entity_name.value }}",
+        "additionalFields": {
+          "accountNumber": "={{ $('Get HubSpot Company').item.json.properties.account_number.value }}",
+          "addressesUi": {
+            "addressesValues": [
+              {
+                "type": "STREET",
+                "line1": "={{ $json.properties.address.value }}",
+                "city": "={{ $json.properties.city.value }}",
+                "region": "={{ $json.properties.state.value }}",
+                "postalCode": "={{ $json.properties.zip.value }}",
+                "country": "Australia"
+              },
+              {
+                "type": "POBOX",
+                "line1": "={{ $json.properties.business_address.value }}",
+                "line2": "={{ $json.properties.business_address_line_2.value }}",
+                "city": "={{ $json.properties.business_address_city.value }}",
+                "region": "={{ $json.properties.business_address_state.value }}",
+                "postalCode": "={{ $json.properties.business_address_postal_code.value }}",
+                "country": "Australia"
+              }
+            ]
+          },
+          "contactStatus": "ACTIVE",
+          "defaultCurrency": "AUD",
+          "emailAddress": "={{ $json.properties.email.value }}",
+          "firstName": "={{ $json.properties.firstname.value }}",
+          "lastName": "={{ $json.properties.lastname.value }}",
+          "phonesUi": {
+            "phonesValues": [
+              {
+                "phoneType": "DEFAULT",
+                "phoneNumber": "={{ $json.properties.phone.value }}",
+                "phoneCountryCode": "AU"
+              }
+            ]
+          },
+          "taxNumber": "={{ $json.properties.abn__acn.value }}"
+        }
+      },
+      "type": "n8n-nodes-base.xero",
+      "typeVersion": 1,
+      "position": [
+        6720,
+        3024
+      ],
+      "id": "ca7ed79e-fcce-4c90-9c21-8587e5437e65",
+      "name": "Create Xero Contact",
+      "retryOnFail": true,
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "MzphtETVBeBH9l4U",
+          "name": "RIT Xero"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "company",
+        "operation": "update",
+        "companyId": {
+          "__rl": true,
+          "value": "={{ $('Get HubSpot Company').item.json.companyId }}",
+          "mode": "id"
+        },
+        "updateFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "xero_customer_id",
+                "value": "={{ $json.ContactID }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        6960,
+        3024
+      ],
+      "id": "7d724b2e-4926-4543-bed6-9e32b816a238",
+      "name": "Update Company with Xero ID",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Receive Deposit Invoice Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "rentittoday.app.n8n.cloud",
+            "user-agent": "HubSpot Connect 2.0 (http://dev.hubspot.com/) (namespace: WebhooksPlatformExecution) - AutomationActionsExecutionService-web",
+            "content-length": "40",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "216.157.42.46",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "AU",
+            "cf-ray": "a5171c6bdb01da1c-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "216.157.42.46, 172.68.210.48",
+            "x-forwarded-host": "rentittoday.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-82-65d5995466-trfh6",
+            "x-hubspot-timeout-millis": "44990",
+            "x-is-trusted": "yes",
+            "x-real-ip": "216.157.42.46"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "state": "WA",
+            "invoice_id": 739831468480
+          },
+          "webhookUrl": "https://rentittoday.app.n8n.cloud/webhook/create-deposit-invoice",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Get HubSpot Contact": {
+      "main": [
+        [
+          {
+            "node": "Has Xero Contact ID?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Invoice With Contact Association": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Line Item Details": {
+      "main": [
+        [
+          {
+            "node": "Resolve Deposit Account by State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Invoice With Line Item Associations": {
+      "main": [
+        [
+          {
+            "node": "Attach Invoice ID and State to Line Items",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Has Xero Contact ID?": {
+      "main": [
+        [
+          {
+            "node": "Get a contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Xero Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Xero Contact ID": {
+      "main": [
+        [
+          {
+            "node": "Create Xero Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Line Items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Line Items": {
+      "main": [
+        [
+          {
+            "node": "Build Xero Line Items Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Line Item Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Xero Invoice": {
+      "main": [
+        [
+          {
+            "node": "Save Xero Invoice ID To HubSpot",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Attach Invoice ID and State to Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Invoice Details": {
+      "main": [
+        [
+          {
+            "node": "Append Xero Contact ID",
+            "type": "main",
+            "index": 2
+          },
+          {
+            "node": "Get Invoice With Line Item Associations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Invoice With Company Association",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Save Xero Invoice ID To HubSpot": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Resolve Deposit Account by State": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Invoice ID and State to Line Items": {
+      "main": [
+        [
+          {
+            "node": "Split Out Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Xero Line Items Payload": {
+      "main": [
+        [
+          {
+            "node": "Update Xero Invoice With Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Xero Invoice With Line Items": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Receive Deposit Invoice Webhook": {
+      "main": [
+        [
+          {
+            "node": "Attach Invoice ID and State to Line Items",
+            "type": "main",
+            "index": 2
+          },
+          {
+            "node": "Save Execution Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice With Company Association": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Company",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get HubSpot Company": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice With Contact Association",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get a contact": {
+      "main": [
+        [
+          {
+            "node": "Add Person to Xero Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Person to Xero Contact": {
+      "main": [
+        [
+          {
+            "node": "Append Xero Contact ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Xero Contact": {
+      "main": [
+        [
+          {
+            "node": "Update Company with Xero ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Company with Xero ID": {
+      "main": [
+        [
+          {
+            "node": "Append Xero Contact ID",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "GBIRaHZowF94O4cL",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "99ca57fc-d6bd-405b-bb51-ce73cd06fc0e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "badd361136705b8339a4999fc691602f7231ea58099f82b3bc20e589e33bbefd"
+  },
+  "nodeGroups": [],
+  "id": "J9ZbnlctFRc4LPjS",
+  "tags": []
+}

@@ -1,0 +1,499 @@
+{
+  "name": "RIT - Caterlink Delivery Invoice → Asset Update",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "hasAttachments": true
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        4224,
+        2240
+      ],
+      "id": "cb91ea3a-d3ca-4429-a1f7-6ece13225fae",
+      "name": "Receive Delivery Invoice Email",
+      "notesInFlow": true,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yMEltCIs3oZ6FbKQ",
+          "name": "Invoice Email Connector"
+        }
+      },
+      "notes": "Polls every minute for emails with attachments. No sender or subject filter."
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Filter Outlook/Gmail attachments down to a single PDF file.\n *\n * Input: item with binary keys attachment_0, attachment_1, ... (n8n binary object).\n * Output: single item, binary property \"data\" = the matched file. No match = no output item.\n */\nconst item = $input.first();\nconst binary = item.binary || {};\n\nconst candidates = Object.entries(binary).filter(([key, file]) => {\n  const isPdf = file.mimeType === 'application/pdf' || /\\.pdf$/i.test(file.fileName || '');\n  return isPdf;\n});\n\nif (candidates.length === 0) {\n  return []; // nothing matched, no output\n}\n\nconst [, file] = candidates[0];\n\nreturn [\n  {\n    json: {\n      fileName: file.fileName,\n      mimeType: file.mimeType,\n    },\n    binary: {\n      data: file,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4432,
+        2240
+      ],
+      "id": "62aaea6a-b5be-4dba-b985-8325dff892db",
+      "name": "Select PDF Attachment",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "notes": "Takes the first PDF attachment. No PDF = no output, so the email is ignored."
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {
+          "joinPages": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        4640,
+        2240
+      ],
+      "id": "5a448fbd-e8e8-41a3-b709-a51b00d29590",
+      "name": "Extract PDF Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Caterlink delivery invoice parser.\n// Finds each line item by its qty/price row, then splits the text after it into Cust Ref and\n// description (title match first, line-length fallback) and reads the item's own serial number.\n\nconst MIN_DESCRIPTION_WORDS = 6;\nconst SERIAL_RE = /Serial\\s*Number:?\\s*([A-Za-z0-9\\-\\/]+)/i;\nconst PRICE_RE = /(\\d+)[ \\t]?EA\\s+\\$([\\d,]+\\.\\d{2})\\s+\\$([\\d,]+\\.\\d{2})/g;\nconst BOUNDARY_RE = /UNIT PRICE|LINE TOTAL|MODEL\\s*\\/\\s*DESCRIPTION|Order Num|Quote Num|Cust Ref|^ITEM$|^Serial\\s*Number/i;\n\nconst escapeRe = (s) => s.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\");\nconst wordCount = (s) => s.split(/\\s+/).filter(Boolean).length;\n\nfunction toDeliveryDateMs(ddmmyyyy) {\n  if (!ddmmyyyy) return null;\n  const [day, month, year] = ddmmyyyy.split(\"/\");\n  return Date.UTC(Number(year), Number(month) - 1, Number(day));\n}\n\nfunction titleAnchors(text, priceStart, endOfItemRe) {\n  const lines = text\n    .slice(0, priceStart)\n    .split(\"\\n\")\n    .map((l) => l.trim().replace(/^\\^/, \"\"))\n    .filter(Boolean);\n\n  const collected = [];\n  for (let i = lines.length - 1; i >= 0 && collected.length < 8; i--) {\n    if (BOUNDARY_RE.test(lines[i]) || endOfItemRe.test(lines[i])) break;\n    if (/^\\d+$/.test(lines[i])) continue;\n    collected.unshift(lines[i]);\n  }\n\n  return collected\n    .map((l) => l.split(/\\s+/).slice(0, 4).join(\" \").toLowerCase())\n    .filter((k) => k.length >= 12);\n}\n\nfunction findDescriptionStart(flat, blockLines, anchors) {\n  const flatLower = flat.toLowerCase();\n\n  let start = -1;\n  for (const key of anchors) {\n    const at = flatLower.indexOf(key);\n    if (at >= 0 && (start < 0 || at < start)) start = at;\n  }\n  if (start > 0 && wordCount(flat.slice(0, start)) >= MIN_DESCRIPTION_WORDS) start = -1;\n  if (start >= 0) return start;\n\n  const firstLong = blockLines.findIndex((l) => wordCount(l) >= MIN_DESCRIPTION_WORDS);\n  return firstLong > 0 ? blockLines.slice(0, firstLong).join(\" \").length + 1 : 0;\n}\n\nfunction parseLineItem(text, rows, idx, endOfItemRe) {\n  const m = rows[idx];\n  const priceEnd = m.index + m[0].length;\n  const nextStart = rows[idx + 1] ? rows[idx + 1].index : text.length;\n  const region = text.slice(priceEnd, nextStart);\n\n  const serialMatch = region.match(SERIAL_RE);\n  const endMatch = region.match(endOfItemRe);\n  const blockEnd = Math.min(\n    region.length,\n    serialMatch ? serialMatch.index : Infinity,\n    endMatch ? endMatch.index : Infinity\n  );\n\n  const blockLines = region.slice(0, blockEnd).split(\"\\n\").map((l) => l.trim()).filter(Boolean);\n  const flat = blockLines.join(\" \");\n  const start = findDescriptionStart(flat, blockLines, titleAnchors(text, m.index, endOfItemRe));\n  const description = flat.slice(start).replace(/^\\^/, \"\").replace(/\\s+/g, \" \").trim();\n\n  return {\n    itemNum: String(idx + 1),\n    description,\n    custRef: flat.slice(0, start).trim(),\n    manufacturer: description.split(/\\s+/)[0] || null,\n    unitPrice: m[2].replace(/,/g, \"\"),\n    serialNumber: serialMatch ? serialMatch[1] : null,\n  };\n}\n\nfunction parseInvoice(rawText) {\n  const text = rawText.replace(/\\r/g, \"\").replace(/\\u00a0/g, \" \");\n\n  const poNum = (text.match(/PO Num:?\\s*([A-Za-z0-9\\-]+)/i) || [])[1] || null;\n  const invoiceNum = (text.match(/Tax Invoice No:?\\s*(\\d+)/i) || [])[1] || null;\n  const invoiceDate = (text.match(/Date:?\\s*(\\d{2}\\/\\d{2}\\/\\d{4})/) || [])[1] || null;\n\n  const endOfItemRe = new RegExp(\n    `^\\\\s*(?:${poNum ? escapeRe(poNum) + \"\\\\b|\" : \"\"}Note:|ELECTRONIC FUNDS)`,\n    \"m\"\n  );\n\n  const rows = [...text.matchAll(PRICE_RE)];\n  const lineItems = rows.map((_, idx) => parseLineItem(text, rows, idx, endOfItemRe));\n\n  if (!poNum || lineItems.length === 0 || lineItems.some((li) => !li.description)) {\n    throw new Error(\n      `Failed to parse invoice: poNum=${poNum}, lineItems found=${lineItems.length}. PDF format may have changed.`\n    );\n  }\n\n  return { poNum, invoiceNum, invoiceDate, deliveryDateMs: toDeliveryDateMs(invoiceDate), lineItems };\n}\n\nconst text = $input.first().json.text;\nreturn [{ json: parseInvoice(text) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4864,
+        2240
+      ],
+      "id": "28a4bb35-aa56-4cbd-a13b-a3546b902a9c",
+      "name": "Parse Invoice PDF",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "notes": "Reads PO, invoice number, date and line items from the PDF text. Throws if the PO or line items are missing."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "poNum",
+              "value": "={{ $json.poNum }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        5072,
+        2224
+      ],
+      "id": "316bea01-ab11-478b-8c61-991455b5291a",
+      "name": "Save Execution Data",
+      "notesInFlow": true,
+      "notes": "Saves the PO number against the execution so it is searchable."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs on a genuine failure. Throwing fails the execution so the shared Error Workflow emails the team.\nconst first = $input.first().json;\n// End-of-run path: one or more line items failed. Include the full summary in the alert.\nif (first.report) {\n  throw new Error(`Caterlink delivery invoice (PO ${first.poNum || 'unknown'}): ${first.failed} of ${first.total} line item(s) failed.\\n\\n${first.report}`);\n}\nconst src = (typeof $prevNode !== 'undefined' && $prevNode && $prevNode.name) || 'unknown step';\nconst err = $input.first().json.error || {};\nlet po = 'unknown';\ntry { po = $('Parse Invoice PDF').first().json.poNum || 'unknown'; } catch (e) {}\nthrow new Error(\n  `Caterlink delivery invoice (PO ${po}) failed at \"${src}\": ${err.message || err.description || JSON.stringify(err).slice(0, 300)}`\n);"
+      },
+      "id": "f8ad8b8a-4f69-4656-a8c7-a2822b3613fb",
+      "name": "Raise Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6640,
+        2352
+      ],
+      "notesInFlow": true,
+      "notes": "Fails the run so the shared Error Workflow emails the team."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/2-217972099/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  filterGroups: [\n    { filters: [ { propertyName: \"contract_number\", operator: \"EQ\", value: $('Parse Invoice PDF').first().json.poNum } ] }\n  ],\n  properties: [\"contract_number\", \"serial_number\", \"delivery_date\", \"manufacturer\", \"hs_object_id\", \"name\", \"asset_number\"],\n  limit: 200\n}) }}",
+        "options": {}
+      },
+      "id": "6a1b3d8d-08a9-4104-ba53-f7e51e32608f",
+      "name": "Search HubSpot Assets by Contract",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5296,
+        2224
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Plans the whole invoice in one pass. One HubSpot search returned every asset on the contract;\n// here each parsed line item is matched to an asset by name and the batch-update payload is built.\n// Nothing here throws: problems are recorded per line item so the summary can report them all.\nconst parsed = $('Parse Invoice PDF').first().json;\nconst search = $input.first().json;\n\nconst MAX_BATCH = 100; // HubSpot batch update limit\n\nconst norm = (s) => String(s ?? '')\n  .replace(/[\\u2018\\u2019]/g, \"'\")\n  .replace(/[\\u201C\\u201D]/g, '\"')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .toLowerCase();\n\nconst errText = (e) => typeof e === 'string'\n  ? e\n  : (e && (e.message || e.description)) || JSON.stringify(e).slice(0, 300);\n\nconst hasDeliveryDate = (a) => {\n  const v = a.props.delivery_date;\n  return v !== null && v !== undefined && String(v).trim() !== '';\n};\n\nlet fatal = null;\nif (search.error) {\n  fatal = `HubSpot asset search failed: ${errText(search.error)}`;\n} else if (search.paging && search.paging.next) {\n  fatal = 'More than 200 assets on this contract - pagination needed in the search step.';\n} else if (!Number.isFinite(parsed.deliveryDateMs)) {\n  fatal = 'Invoice date could not be read from the PDF, so no delivery date can be set.';\n} else if (parsed.lineItems.length > MAX_BATCH) {\n  fatal = `${parsed.lineItems.length} line items exceeds the ${MAX_BATCH}-record batch limit.`;\n}\n\nconst rows = [];\nconst inputs = [];\n\nif (fatal) {\n  for (const li of parsed.lineItems) {\n    rows.push({ itemNum: li.itemNum, description: li.description, status: 'failed', detail: fatal });\n  }\n} else {\n  const assets = (search.results || []).map((r) => ({ id: String(r.id), props: r.properties || {} }));\n  const claimed = new Set(); // assets already given to an earlier line item on this invoice\n\n  for (const li of parsed.lineItems) {\n    const row = { itemNum: li.itemNum, description: li.description };\n    const named = assets.filter((a) => norm(a.props.name) === norm(li.description));\n    const pending = named.filter((a) => !claimed.has(a.id) && !hasDeliveryDate(a));\n\n    if (named.length === 0) {\n      rows.push({ ...row, status: 'failed', detail: 'No matching asset found for this contract and description.' });\n      continue;\n    }\n    if (pending.length === 0) {\n      rows.push({ ...row, status: 'skipped', detail: 'Already delivered (every matching asset has a delivery date or is taken by an earlier line).' });\n      continue;\n    }\n\n    const asset = pending[0];\n    claimed.add(asset.id);\n\n    // keep an existing asset_number, otherwise derive \"{contract}-{itemNum}\"\n    const assetNumber = asset.props.asset_number || `${asset.props.contract_number || parsed.poNum}-${li.itemNum}`;\n\n    const properties = {\n      delivery_date: String(parsed.deliveryDateMs),\n      price: String(li.unitPrice),\n      asset_number: assetNumber,\n    };\n    if (li.serialNumber) properties.serial_number = li.serialNumber;\n    if (li.manufacturer) properties.manufacturer = li.manufacturer;\n    if (parsed.invoiceNum) properties.invoice_reference = parsed.invoiceNum;\n\n    inputs.push({ id: asset.id, properties });\n    rows.push({ ...row, status: 'queued', assetId: asset.id, assetNumber });\n  }\n}\n\nreturn [{\n  json: {\n    poNum: parsed.poNum,\n    invoiceNum: parsed.invoiceNum,\n    deliveryDateMs: parsed.deliveryDateMs,\n    fatal,\n    rows,\n    inputs,\n  },\n}];\n"
+      },
+      "id": "63a056bb-2231-4fc4-b444-88ac2c60e737",
+      "name": "Plan Asset Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5520,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6ad25eaa-3575-42e2-a7f9-59ae7787a504",
+              "leftValue": "={{ String(($json.inputs || []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5744,
+        2224
+      ],
+      "id": "06e91374-bbb5-4136-83e4-4fac172cb7fd",
+      "name": "Anything To Update?",
+      "notesInFlow": true,
+      "notes": "TRUE = every matching asset (same contract + name) already has a delivery date, so skip to the next line item. FALSE = at least one still needs updating (or no match, which Select Asset To Update will error on)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/2-217972099/batch/update",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ inputs: $json.inputs }) }}",
+        "options": {}
+      },
+      "id": "7b01d5c3-3959-438e-8c39-860fa82d03fc",
+      "name": "Batch Update HubSpot Assets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5968,
+        2112
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "1f2p8UfHnMXaVgX3",
+          "name": "RIT HubSpot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs once, after the whole invoice has been processed. Works out the final outcome of every\n// line item, writes the summary to the console, and returns it as this node's output.\nconst plan = $('Plan Asset Updates').first().json;\nconst incoming = $input.first().json; // batch-update response, or the plan itself when nothing was sent\n\nconst errText = (e) => typeof e === 'string'\n  ? e\n  : (e && (e.message || e.description)) || JSON.stringify(e).slice(0, 300);\n\nconst rows = plan.rows.map((r) => ({ ...r }));\nconst queued = rows.filter((r) => r.status === 'queued');\n\nlet batchNote = null;\nif (queued.length > 0) {\n  if (incoming.error) {\n    batchNote = `Batch update call failed: ${errText(incoming.error)}`;\n    queued.forEach((r) => { r.status = 'failed'; r.detail = batchNote; });\n  } else {\n    // HubSpot can return success for some records and errors for others, so check each asset ID\n    const okIds = new Set((incoming.results || []).map((x) => String(x.id)));\n    const errs = incoming.errors || [];\n    queued.forEach((r) => {\n      if (okIds.has(r.assetId)) { r.status = 'updated'; return; }\n      const hit = errs.find((e) => JSON.stringify(e).includes(`\"${r.assetId}\"`));\n      r.status = 'failed';\n      r.detail = hit\n        ? `HubSpot rejected the update: ${errText(hit)}`\n        : 'Asset ID missing from the HubSpot batch response.';\n    });\n    if (incoming.status && incoming.status !== 'COMPLETE') batchNote = `HubSpot batch status: ${incoming.status}`;\n  }\n}\n\nconst count = (s) => rows.filter((r) => r.status === s).length;\nconst updated = count('updated');\nconst skipped = count('skipped');\nconst failed = count('failed');\n\nconst deliveryDate = Number.isFinite(plan.deliveryDateMs)\n  ? new Date(plan.deliveryDateMs).toISOString().slice(0, 10)\n  : 'unknown';\nconst short = (s) => String(s ?? '').replace(/\\s+/g, ' ').slice(0, 70);\n\nconst lines = [\n  '=== Caterlink delivery invoice -> asset update ===',\n  `PO: ${plan.poNum} | Invoice: ${plan.invoiceNum ?? 'n/a'} | Delivery date: ${deliveryDate}`,\n  `Line items: ${rows.length} | Updated: ${updated} | Skipped: ${skipped} | Failed: ${failed}`,\n];\nif (plan.fatal) lines.push(`FATAL: ${plan.fatal}`);\nif (batchNote) lines.push(`NOTE: ${batchNote}`);\nfor (const r of rows) {\n  const target = r.assetId ? ` -> asset ${r.assetId}${r.assetNumber ? ` (${r.assetNumber})` : ''}` : '';\n  lines.push(`  ${r.status.toUpperCase().padEnd(7)} #${r.itemNum} ${short(r.description)}${target}${r.detail ? ` | ${r.detail}` : ''}`);\n}\nconst report = lines.join('\\n');\n\nconsole.log(report);\n\nreturn [{\n  json: {\n    poNum: plan.poNum,\n    invoiceNum: plan.invoiceNum,\n    total: rows.length,\n    updated,\n    skipped,\n    failed,\n    hasFailures: failed > 0,\n    report,\n    rows,\n  },\n}];\n"
+      },
+      "id": "c456da12-6be9-44b0-834f-e7a01b502b78",
+      "name": "Build Summary Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6192,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cc6dea90-8a36-4c7e-81a5-c43c5a56584b",
+              "leftValue": "={{ String($json.hasFailures) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6416,
+        2224
+      ],
+      "id": "dfe22374-00cd-4f8f-b4d1-d88c0a146109",
+      "name": "Any Failures?",
+      "notesInFlow": true,
+      "notes": "TRUE = every matching asset (same contract + name) already has a delivery date, so skip to the next line item. FALSE = at least one still needs updating (or no match, which Select Asset To Update will error on)."
+    }
+  ],
+  "pinData": {
+    "Receive Delivery Invoice Email": [
+      {
+        "json": {
+          "id": "AAMkADVmYWVkZmZiLTU0MjYtNDE3OC04Y2QzLTQ3YTc4Nzg5NTFiMwBGAAAAAADZeFHeM2ZBQo9lcR5xSwcJBwAg61R33G1HR7cij0EevjldAAAAAAEMAAAg61R33G1HR7cij0EevjldAABTMY5DAAA=",
+          "conversationId": "AAQkADVmYWVkZmZiLTU0MjYtNDE3OC04Y2QzLTQ3YTc4Nzg5NTFiMwAQANWJ0iTPwUavnsLCa37bvRc=",
+          "subject": "FW: RIT invoice 873744 Viet Sense Bowl RW4632",
+          "bodyPreview": "Alan Woods\r\n​​​​​\r\nGroup Accountant and Company Secretary\r\nDirect: (08) 9492 8213\r\n\r\nwww.caterlink.com.au\r\n Perth Office & Showroom\r\n 26 Howe Street, Osborne Park, WA 6017\r\n (08) 9492 8200\r\n\r\n\r\nMelbourne Office & Showroom\r\n14 Glenvale Crescent, Mulgra",
+          "from": "hubspot@rentittoday.com.au",
+          "to": [
+            "hubspot@rentittoday.com.au"
+          ],
+          "categories": [],
+          "hasAttachments": true
+        },
+        "binary": {
+          "attachment_0": {
+            "mimeType": "image/jpeg",
+            "fileType": "image",
+            "fileExtension": "png",
+            "data": "filesystem-v2",
+            "fileName": "image.png",
+            "id": "filesystem-v2:workflows/AVfNbcFzjNq4EPEA/executions/temp/binary_data/1e873988-f6ab-4a50-a77a-f7c7919d3744",
+            "fileSize": "58.5 kB",
+            "bytes": 58535
+          },
+          "attachment_1": {
+            "mimeType": "image/png",
+            "fileType": "image",
+            "fileExtension": "png",
+            "data": "filesystem-v2",
+            "fileName": "image.png",
+            "id": "filesystem-v2:workflows/AVfNbcFzjNq4EPEA/executions/temp/binary_data/978cc66e-9777-4a4f-b91b-e606f64a239f",
+            "fileSize": "11.3 kB",
+            "bytes": 11348
+          },
+          "attachment_2": {
+            "mimeType": "image/jpeg",
+            "fileType": "image",
+            "fileExtension": "png",
+            "data": "filesystem-v2",
+            "fileName": "image.png",
+            "id": "filesystem-v2:workflows/AVfNbcFzjNq4EPEA/executions/temp/binary_data/e4ad6c71-3115-407d-98c9-adcaed3e3f51",
+            "fileSize": "38.8 kB",
+            "bytes": 38783
+          },
+          "attachment_3": {
+            "mimeType": "application/pdf",
+            "fileType": "pdf",
+            "fileExtension": "pdf",
+            "data": "filesystem-v2",
+            "fileName": "873744.pdf",
+            "id": "filesystem-v2:workflows/AVfNbcFzjNq4EPEA/executions/temp/binary_data/d77ebba0-8b0b-4890-8ff0-7b4f4c8bf6ac",
+            "fileSize": "504 kB",
+            "bytes": 504090
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Receive Delivery Invoice Email": {
+      "main": [
+        [
+          {
+            "node": "Select PDF Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select PDF Attachment": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Parse Invoice PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Invoice PDF": {
+      "main": [
+        [
+          {
+            "node": "Save Execution Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Search HubSpot Assets by Contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search HubSpot Assets by Contract": {
+      "main": [
+        [
+          {
+            "node": "Plan Asset Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Asset Updates": {
+      "main": [
+        [
+          {
+            "node": "Anything To Update?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything To Update?": {
+      "main": [
+        [
+          {
+            "node": "Batch Update HubSpot Assets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Update HubSpot Assets": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Report": {
+      "main": [
+        [
+          {
+            "node": "Any Failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Failures?": {
+      "main": [
+        [
+          {
+            "node": "Raise Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "GBIRaHZowF94O4cL",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "c93be022-09c5-4b47-952e-2a972c3be662",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "badd361136705b8339a4999fc691602f7231ea58099f82b3bc20e589e33bbefd"
+  },
+  "nodeGroups": [],
+  "id": "AVfNbcFzjNq4EPEA",
+  "tags": []
+}
