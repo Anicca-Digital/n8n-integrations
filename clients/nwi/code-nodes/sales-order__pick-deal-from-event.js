@@ -1,4 +1,4 @@
-// One execution per webhook call. HubSpot posts a JSON array of events; keep the "Closed Won? ticked" ones.
+// One execution per webhook call. HubSpot posts a JSON array of events; keep the closed-won ones (see triggers in Workflow Config).
 const hs = $('Workflow Config').first().json.hubspot;
 const body = $('Receive HubSpot Deal Events').first().json.body;
 const events = Array.isArray(body) ? body : [];
@@ -8,7 +8,7 @@ for (const e of events) {
   const isDealChange = e.subscriptionType === 'deal.propertyChange'
     || (e.subscriptionType === 'object.propertyChange' && e.objectTypeId === '0-3');
   if (!isDealChange) continue;
-  if (e.propertyName !== hs.triggerProperty || String(e.propertyValue).toLowerCase() !== hs.triggerValue) continue;
+  if (!hs.triggers.some((t) => t.property === e.propertyName && String(e.propertyValue).toLowerCase() === t.value)) continue;
   const id = String(e.objectId || '').trim();
   if (id && !ids.includes(id)) ids.push(id);
 }

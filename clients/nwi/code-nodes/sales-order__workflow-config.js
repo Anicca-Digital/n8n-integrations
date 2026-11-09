@@ -9,9 +9,13 @@ bc.companiesUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/compa
 return [{ json: {
   hubspot: {
     pipelineId: 'default',
-    triggerProperty: 'closed_won',
-    triggerValue: 'true',
-    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,closed_won',
+    // Any ONE of these starts the sync. Subscribe the HubSpot webhook to whichever property you use.
+    triggers: [
+      { property: 'dealstage', value: 'closedwon' },
+      { property: 'hs_is_closed_won', value: 'true' },
+      { property: 'closed_won', value: 'true' },
+    ],
+    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won',
     companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',
     contactProperties: 'firstname,lastname,email,phone',
     lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],
