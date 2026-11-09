@@ -1,0 +1,35 @@
+name: validate-n8n
+
+on:
+  pull_request:
+    paths:
+      - "clients/**/*.json"
+      - "shared/**/*.json"
+      - ".github/workflows/validate-n8n.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON parses
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f" 2>/dev/null; then
+              echo "::error file=$f::Invalid JSON"; fail=1
+            fi
+          done < <(find clients shared -type f -name '*.json' 2>/dev/null)
+          exit $fail
+
+      - name: Check for likely secrets
+        run: |
+          # Matches real token shapes and non-empty secret-named string values.
+          # Credential type names (e.g. hubspotAppToken) and credential id/name pairs are fine.
+          pattern='(pat-[a-z0-9]{2,}-[0-9a-f-]{20,}|sk-[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[Bb]earer [A-Za-z0-9._-]{20,}|"(password|client_secret|clientSecret|apiKey|api_key|secret|accessToken|refreshToken)": *"[^"=]{6,}")'
+          if grep -rnE --include='*.json' "$pattern" clients shared 2>/dev/null | cut -c1-160; then
+            echo "::error::Possible secret found in workflow JSON (see matches above). Use credential references only."
+            exit 1
+          fi
+          echo "No likely secrets found."
