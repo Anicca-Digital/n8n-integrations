@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyName: 'National Weighing & Instrument', // the company's `name`; its GUID is looked up each run\n};\nbc.companiesUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    closedWonStageId: 'closedwon',\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
+        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyName: 'National Weighing & Instrument', // the company's `name`; its GUID is looked up each run\n};\nbc.companiesUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    triggerProperty: 'closed_won',\n    triggerValue: 'true',\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,closed_won',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
       },
       "id": "c6e9f32e-1359-533e-aba2-0594e05dcfb0",
       "name": "Workflow Config",
@@ -75,7 +75,7 @@
           "conditions": [
             {
               "id": "e8fa4a91-d66e-5f2f-9c26-39ae05b76d13",
-              "leftValue": "={{ String($('Get Deal').first().json.properties.pipeline === $('Workflow Config').first().json.hubspot.pipelineId && $('Get Deal').first().json.properties.dealstage === $('Workflow Config').first().json.hubspot.closedWonStageId && !String($('Get Deal').first().json.properties.bc_order_id || '').trim()) }}",
+              "leftValue": "={{ String($('Get Deal').first().json.properties.pipeline === $('Workflow Config').first().json.hubspot.pipelineId && String($('Get Deal').first().json.properties[$('Workflow Config').first().json.hubspot.triggerProperty]).toLowerCase() === $('Workflow Config').first().json.hubspot.triggerValue && !String($('Get Deal').first().json.properties.bc_order_id || '').trim()) }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -98,7 +98,7 @@
         300
       ],
       "notesInFlow": true,
-      "notes": "False = wrong pipeline/stage, or bc_order_id already set. Run ends quietly."
+      "notes": "False = wrong pipeline, Closed Won? not ticked, or bc_order_id already set. Run ends quietly."
     },
     {
       "parameters": {},
@@ -852,7 +852,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. *Workflow Config* holds the BC tenant, environment and company name; the company GUID is looked up on every run. Check they are right.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. *Workflow Config* holds the BC tenant, environment and company name; the company GUID is looked up on every run. Check they are right.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text), deal `closed_won` (single checkbox).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
         "height": 240,
         "width": 700,
         "color": 5

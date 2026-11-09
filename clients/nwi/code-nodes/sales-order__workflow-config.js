@@ -9,8 +9,9 @@ bc.companiesUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/compa
 return [{ json: {
   hubspot: {
     pipelineId: 'default',
-    closedWonStageId: 'closedwon',
-    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id',
+    triggerProperty: 'closed_won',
+    triggerValue: 'true',
+    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,closed_won',
     companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',
     contactProperties: 'firstname,lastname,email,phone',
     lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],

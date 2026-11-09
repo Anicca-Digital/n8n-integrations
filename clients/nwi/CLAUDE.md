@@ -29,5 +29,6 @@ Recorded 2026-11-09. No export from this instance exists yet.
 
 ## Decisions
 - HubSpot -> n8n uses the native Webhooks API (HubSpot developer app), not Data Hub.
+- Trigger: deal checkbox property `closed_won` ("Closed Won?") ticked. The webhook subscribes to that property; n8n keeps events with value `true`. Pipeline `default` is still checked.
 - Match on SKU: HubSpot line item `hs_sku` = BC item `number`.
 - HubSpot properties: company `business_central_id` (BC customer number), deal `bc_order_id` (BC sales order number).
