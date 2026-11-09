@@ -5,6 +5,7 @@ on:
     paths:
       - "clients/**/*.json"
       - "shared/**/*.json"
+      - "shared/tools/**"
       - ".github/workflows/validate-n8n.yml"
 
 jobs:
@@ -12,6 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Validate JSON parses
         run: |
@@ -33,3 +44,19 @@ jobs:
             exit 1
           fi
           echo "No likely secrets found."
+
+      - name: Run n8n workflow validator on changed workflows
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Fails on ERROR only (the validator exits non-zero on ERROR; --strict is not used).
+          # Warnings and notes are printed. Only changed workflow JSON is checked, so
+          # pre-existing findings in untouched files do not block unrelated PRs.
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- 'clients/**/*.json' 'shared/**/*.json')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No workflow JSON changed; skipping validator."
+            exit 0
+          fi
+          printf 'Validating:\n'; printf '  %s\n' "${files[@]}"
+          python3 shared/tools/validate_workflow.py --no-color "${files[@]}"
