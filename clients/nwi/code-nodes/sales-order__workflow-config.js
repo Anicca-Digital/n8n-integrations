@@ -2,8 +2,8 @@
 // REPLACE_* values must be filled in before publishing (see the sticky note).
 const bc = {
   baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',
-  tenantId: 'REPLACE_ENTRA_TENANT_ID',
-  environment: 'REPLACE_BC_ENVIRONMENT_NAME',   // e.g. Production or Sandbox
+  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',
+  environment: 'Production',
   companyId: 'REPLACE_BC_COMPANY_GUID',         // GET .../api/v2.0/companies
 };
 bc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;

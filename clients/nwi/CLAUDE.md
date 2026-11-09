@@ -4,7 +4,7 @@ Read this before editing anything in `clients/nwi/`. Full detail is in `README.m
 
 ## Systems
 - **HubSpot**: CRM (deals, companies, contacts, line items). Credential: `NWI HubSpot App Token` (`hubspotAppToken`) - PLACEHOLDER name, confirm.
-- **Business Central (BC)**: master for customers, quotes, inventory, finance. API v2.0. Credential: `NWI Business Central OAuth2` (`oAuth2Api`) - PLACEHOLDER name, confirm.
+- **Business Central (BC)**: master for customers, quotes, inventory, finance. API v2.0. Credential: `Business Central – NWI Group (client credentials)` (`oAuth2Api`, client credentials grant). Name taken from a screenshot; the dash is an en dash.
 - BC's native HubSpot connector already syncs Contacts and Products. Do not duplicate that.
 
 ## Folders
@@ -19,8 +19,10 @@ Read these before building or editing. An export in this folder always wins over
 | n8n version | UNKNOWN (ask). typeVersions authored against n8n 2.23 patterns, unverified on this instance |
 | Cloud or self-hosted | UNKNOWN (ask) |
 | Error handler workflow ID | UNKNOWN (ask) |
-| Credential names (exact spelling) | UNKNOWN. Placeholders above |
-| BC tenant / environment / company ID | UNKNOWN (placeholders `REPLACE_*` in the Workflow Config node) |
+| Credential names (exact spelling) | BC: see above. HubSpot app token and webhook auth names are still placeholders |
+| BC tenant ID | `0dc6b780-5b9e-4809-afb6-6bc499280f23` |
+| BC environment | `Production` |
+| BC company | National Weighing & Instrument. GUID still needed (`REPLACE_BC_COMPANY_GUID`) |
 | Consultant access level | UNKNOWN (ask) |
 
 Recorded 2026-11-09. No export from this instance exists yet.

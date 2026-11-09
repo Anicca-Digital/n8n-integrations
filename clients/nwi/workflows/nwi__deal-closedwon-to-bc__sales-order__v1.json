@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Environment-specific values live here and nowhere else.\n// REPLACE_* values must be filled in before publishing (see the sticky note).\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: 'REPLACE_ENTRA_TENANT_ID',\n  environment: 'REPLACE_BC_ENVIRONMENT_NAME',   // e.g. Production or Sandbox\n  companyId: 'REPLACE_BC_COMPANY_GUID',         // GET .../api/v2.0/companies\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    closedWonStageId: 'closedwon',\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
+        "jsCode": "// Environment-specific values live here and nowhere else.\n// REPLACE_* values must be filled in before publishing (see the sticky note).\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyId: 'REPLACE_BC_COMPANY_GUID',         // GET .../api/v2.0/companies\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    closedWonStageId: 'closedwon',\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
       },
       "id": "c6e9f32e-1359-533e-aba2-0594e05dcfb0",
       "name": "Workflow Config",
@@ -27,7 +27,7 @@
         300
       ],
       "notesInFlow": true,
-      "notes": "Fill in the REPLACE_* BC values."
+      "notes": "Only the BC company GUID is still to fill in."
     },
     {
       "parameters": {
@@ -448,7 +448,7 @@
       ],
       "credentials": {
         "oAuth2Api": {
-          "name": "NWI Business Central OAuth2"
+          "name": "Business Central – NWI Group (client credentials)"
         }
       },
       "retryOnFail": true,
@@ -502,7 +502,7 @@
       ],
       "credentials": {
         "oAuth2Api": {
-          "name": "NWI Business Central OAuth2"
+          "name": "Business Central – NWI Group (client credentials)"
         }
       },
       "retryOnFail": true,
@@ -554,7 +554,7 @@
       ],
       "credentials": {
         "oAuth2Api": {
-          "name": "NWI Business Central OAuth2"
+          "name": "Business Central – NWI Group (client credentials)"
         }
       },
       "notesInFlow": true,
@@ -656,7 +656,7 @@
       ],
       "credentials": {
         "oAuth2Api": {
-          "name": "NWI Business Central OAuth2"
+          "name": "Business Central – NWI Group (client credentials)"
         }
       },
       "retryOnFail": true,
@@ -743,7 +743,7 @@
       ],
       "credentials": {
         "oAuth2Api": {
-          "name": "NWI Business Central OAuth2"
+          "name": "Business Central – NWI Group (client credentials)"
         }
       },
       "notesInFlow": true,
@@ -792,7 +792,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **NWI Business Central OAuth2** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. Fill the REPLACE_* values in *Workflow Config*: Entra tenant ID, BC environment name, BC company GUID.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n2. Fill the BC company GUID in *Workflow Config* (REPLACE_BC_COMPANY_GUID). Tenant and environment (Production) are already set.\n3. Settings -> Error Workflow: set the shared error handler.\n4. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text).\n5. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**No fan-out:** one deal per run. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
         "height": 240,
         "width": 700,
         "color": 5
