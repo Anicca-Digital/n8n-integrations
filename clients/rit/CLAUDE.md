@@ -31,7 +31,7 @@ An export in this folder always wins over a recorded value here. Do not copy fac
 |---|---|
 | n8n | Cloud, `rentittoday.app.n8n.cloud` |
 | n8n version | UNKNOWN (ask) |
-| Error handler workflow ID | `GBIRaHZowF94O4cL` (set as `settings.errorWorkflow` on all five) |
+| Error handler workflow ID | `GBIRaHZowF94O4cL` (set as `settings.errorWorkflow` on the five other workflows; the Weekly Invoice sync does NOT set one) |
 | Credential names (exact spelling) | `RIT HubSpot`, `RIT Xero`, `Xero Additional Scope`, `Quote Email Connector`, `Invoice Email Connector` |
 | Xero tenant ID | `1e9660fb-45a7-4a9b-9158-cc54c9e78f34` (hardcoded in nodes) |
 | Consultant access level | UNKNOWN (ask) |
