@@ -1,0 +1,443 @@
+{
+  "name": "NetSuite Quote Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "4951088a-ba91-4649-8751-d8dec155bb1a",
+      "name": "Schedule Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4a8c0841-e899-461b-b26c-604855c939c2",
+              "name": "netsuiteAccountHost",
+              "value": "6798253",
+              "type": "string"
+            },
+            {
+              "id": "7a262e30-311e-4ab0-9f34-5fea4418432d",
+              "name": "netsuiteTimezone",
+              "value": "Australia/Sydney",
+              "type": "string"
+            },
+            {
+              "id": "732daa70-5736-48af-a013-7dc7e8c0c631",
+              "name": "overlapMinutes",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "f5b2c634-b0d1-4bb2-bd7a-42bed9990d70",
+              "name": "parkDays",
+              "value": 14,
+              "type": "number"
+            },
+            {
+              "id": "7a0da172-0431-40c3-b32f-744f7788d079",
+              "name": "forceSince",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "3c1af03d-82af-4fdb-af2e-5c0051eefe64",
+              "name": "cutoverStart",
+              "value": "={{ ($json.timestamp ? DateTime.fromISO($json.timestamp) : $now).minus({ minutes: 30 }).toUTC().toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "0418fb01-e541-4901-a1ef-f17b1e32c321",
+              "name": "uatTitlePrefix",
+              "value": "HS-TEST-",
+              "type": "string"
+            },
+            {
+              "id": "5117a729-e26f-462b-b4f3-9da1db79b8df",
+              "name": "netsuiteClientId",
+              "value": "8793b16da5c4d312acc6d5fe80d48c8cc96414552b785d9c687a9bd2d46f38f1",
+              "type": "string"
+            },
+            {
+              "id": "ebc29661-2088-4d06-a241-d34778909f39",
+              "name": "netsuiteCertificateId",
+              "value": "JES3gFH-mX_GL9EleOj2O-FOp9X-wfTlwiEG1TuN9Wo",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ca45832e-9559-4785-a28d-f49345c5348e",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        384
+      ],
+      "notesInFlow": true,
+      "notes": "Edit run settings here. forceSince = one-off re-pull. uatTitlePrefix = only sync quotes whose title starts with it (clear for go-live)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Where this run's NetSuite pull starts. Must stay a Code node: the watermark lives in workflow static data.\nconst s = $json;\nconst store = $getWorkflowStaticData('global');\nconst basis = s.forceSince || store.lastSuccessfulRun || s.cutoverStart;\nconst start = DateTime.fromISO(basis, { zone: 'utc' });\nif (!start.isValid) {\n  throw new Error('Watermark is not a valid ISO timestamp: ' + basis);\n}\n// Quotes that had no matching deal are re-pulled every run for parkDays.\nconst parked = store.parkedQuotes || {};\nconst cutoff = DateTime.utc().minus({ days: s.parkDays }).toISO();\nconst parkedIds = Object.keys(parked).filter(id => /^\\d+$/.test(id) && parked[id].firstParked >= cutoff).slice(0, 500);\nreturn [{ json: {\n  ...s,\n  runStartedAt: DateTime.utc().toISO(),\n  since: start.minus({ minutes: s.overlapMinutes }).setZone(s.netsuiteTimezone).toFormat('yyyy-MM-dd HH:mm:ss'),\n  parkedIds\n} }];\n"
+      },
+      "id": "9011601d-9720-43a8-89d7-b0a790d4a6df",
+      "name": "Get Watermark",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Get Watermark').first().json.netsuiteAccountHost }}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "transient"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Get NetSuite Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { q: [\n  \"SELECT t.id AS quote_id, t.tranid AS quote_number, BUILTIN.DF(t.entitystatus) AS status_label,\",\n  \"t.foreigntotal AS total, t.opportunity AS opportunity_id\",\n  \"FROM transaction t\",\n  \"WHERE t.type = 'Estimate'\",\n  \"AND t.opportunity IS NOT NULL\",\n  ($('Get Watermark').first().json.uatTitlePrefix ? \"AND UPPER(t.title) LIKE '\" + $('Get Watermark').first().json.uatTitlePrefix.toUpperCase() + \"%'\" : \"\"),\n  \"AND (t.lastmodifieddate > TO_TIMESTAMP('\" + $('Get Watermark').first().json.since + \"', 'YYYY-MM-DD HH24:MI:SS')\"\n    + ($('Get Watermark').first().json.parkedIds.length ? \" OR t.id IN (\" + $('Get Watermark').first().json.parkedIds.join(', ') + \")\" : \"\") + \")\",\n  \"AND t.id = (SELECT MAX(t2.id) FROM transaction t2 WHERE t2.type = 'Estimate' AND t2.opportunity = t.opportunity)\",\n  \"ORDER BY t.lastmodifieddate ASC\"\n].join('\\n') } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $response.body.offset + $response.body.count }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.hasMore !== true }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "id": "971a64b1-e539-44f5-b659-08aacf5d6753",
+      "name": "Query NetSuite Quotes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "SuiteQL is in the JSON body. Changed since the watermark (or parked), latest quote per opportunity. Pages through 1000 at a time."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "id": "a225bd10-43f0-4b19-b392-929197067fd7",
+      "name": "Split Out Quotes",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "DFU30ofiXJopLQrm",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/DFU30ofiXJopLQrm",
+          "cachedResultName": "NetSuite Quote -> HubSpot Deal Lines v2"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "180c721a-eb1d-4e15-a569-fc9fd49d594b",
+      "name": "Sync Each Quote",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        384
+      ],
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "notes": "One sub-workflow run per quote. A failed quote returns an error item instead of stopping the rest."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs once all quotes are done. Must stay a Code node: it writes workflow static data.\n// Any failure holds the watermark (the next run retries) and raises an alert via the error workflow.\nconst results = $input.all().map(i => i.json);\nconst failed = results.filter(r => r.ok !== true);\nif (failed.length > 0) {\n  throw new Error(failed.length + ' of ' + results.length + ' quotes failed. Watermark held; the next run retries them. First failures: '\n    + failed.slice(0, 5).map(r => r.error || JSON.stringify(r)).join(' | '));\n}\nconst run = $('Get Watermark').first().json;\nconst store = $getWorkflowStaticData('global');\nconst parked = { ...(store.parkedQuotes || {}) };\nfor (const r of results) {\n  if (r.skipped) {\n    parked[r.quoteId] = { firstParked: parked[r.quoteId]?.firstParked || run.runStartedAt, quoteNumber: r.quoteNumber, lastReason: r.reason };\n  } else {\n    delete parked[r.quoteId];\n  }\n}\nconst cutoff = DateTime.utc().minus({ days: run.parkDays }).toISO();\nfor (const id of Object.keys(parked)) {\n  if (parked[id].firstParked < cutoff) delete parked[id];\n}\nstore.parkedQuotes = parked;\nstore.lastSuccessfulRun = run.runStartedAt;\nreturn [{ json: {\n  watermarkAdvancedTo: run.runStartedAt,\n  synced: results.filter(r => !r.skipped).length,\n  skipped: results.filter(r => r.skipped),\n  parkedCount: Object.keys(parked).length\n} }];\n"
+      },
+      "id": "8617023a-f22d-4f58-8ac1-8068b660fd1f",
+      "name": "Save Watermark",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "useJson": true,
+        "claimsJson": "={\n  \"iss\": \"{{ $('Settings').first().json.netsuiteClientId }}\",\n  \"scope\": [\"rest_webservices\"],\n  \"aud\": \"https://{{ $('Settings').first().json.netsuiteAccountHost }}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token\",\n  \"iat\": {{ Math.floor(Date.now() / 1000) }},\n  \"exp\": {{ Math.floor(Date.now() / 1000) + 300 }}\n}",
+        "options": {
+          "kid": "={{ $('Settings').first().json.netsuiteCertificateId }}",
+          "algorithm": "PS256"
+        }
+      },
+      "id": "f912287e-986d-4dc3-9084-5b6ad448aa57",
+      "name": "Sign NetSuite JWT",
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [
+        720,
+        384
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "jwtAuth": {
+          "id": "y8xqBl5aSazydkso",
+          "name": "Netsuite JWT Auth account"
+        }
+      },
+      "notes": "Signs a 5-minute assertion with the private key (JWT credential, PEM, PS256). kid = NetSuite Certificate ID."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.netsuiteAccountHost }}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "client_credentials"
+            },
+            {
+              "name": "client_assertion_type",
+              "value": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+            },
+            {
+              "name": "client_assertion",
+              "value": "={{ $json.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b61abdad-ae35-4e71-845d-4c66ed37d3b7",
+      "name": "Get NetSuite Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Machine-to-machine login. Returns access_token (valid 60 min). Never needs reconnecting."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ad43199c-e153-4ab9-811c-93953407a538",
+              "name": "netsuiteToken",
+              "value": "={{ $('Get NetSuite Token').first().json.access_token }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "12bde7f3-9fdf-4ef2-a425-9324ecd02ba0",
+      "name": "Attach Token",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        384
+      ],
+      "notesInFlow": true,
+      "notes": "Passes the NetSuite access token to the sub-workflow with each quote."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Watermark",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Watermark": {
+      "main": [
+        [
+          {
+            "node": "Sign NetSuite JWT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query NetSuite Quotes": {
+      "main": [
+        [
+          {
+            "node": "Split Out Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Quotes": {
+      "main": [
+        [
+          {
+            "node": "Attach Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Each Quote": {
+      "main": [
+        [
+          {
+            "node": "Save Watermark",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign NetSuite JWT": {
+      "main": [
+        [
+          {
+            "node": "Get NetSuite Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get NetSuite Token": {
+      "main": [
+        [
+          {
+            "node": "Query NetSuite Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Token": {
+      "main": [
+        [
+          {
+            "node": "Sync Each Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6b7ca320-336d-4659-afaa-1109204a52bd",
+  "meta": {
+    "instanceId": "2fc1737aa47c859c75acd1a4cce519163bfd3986289dd13a15f806220120abaf"
+  },
+  "nodeGroups": [],
+  "id": "Sbm5HvYBZ8U4NBiC",
+  "tags": []
+}

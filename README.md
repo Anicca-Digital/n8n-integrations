@@ -8,7 +8,8 @@ Anicca Digital's single repo for **all n8n workflow work**, across clients. n8n 
 n8n-integrations/
 ├── CLAUDE.md                 # Rules for Claude Code and contributors
 ├── clients/
-│   └── spl-simpro/           # One folder per client
+│   ├── spl-simpro/           # One folder per client
+│   └── plasson/
 │       ├── CLAUDE.md         # Client context: systems, workflows, rules
 │       ├── README.md
 │       ├── workflows/        # n8n exports (one workflow per JSON file)

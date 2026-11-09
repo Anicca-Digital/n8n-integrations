@@ -1,0 +1,871 @@
+{
+  "name": "NetSuite Quote -> HubSpot Deal Lines",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "0a84f8c7-16d9-4587-bbc6-512d0f6ac54e",
+      "name": "When Called By Dispatcher",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"netsuiteAccountHost\": \"6798253\",\n  \"pipelineId\": \"2107090401\",\n  \"stageIds\": {\n    \"Quote Request Received\": \"3645814253\",\n    \"Quoted\": \"3645814254\",\n    \"Follow-up/Negotiation\": \"3645814255\",\n    \"Quote Closed Won\": \"3645814258\",\n    \"Quote Closed Lost\": \"3645814259\"\n  },\n  \"statusToStage\": {\n    \"Proposal\": \"Quote Request Received\",\n    \"Quote Sent\": \"Quoted\",\n    \"In Discussion\": \"Follow-up/Negotiation\",\n    \"In Negotiation\": \"Follow-up/Negotiation\",\n    \"P&A\": \"Follow-up/Negotiation\",\n    \"Store Set Up\": \"Follow-up/Negotiation\",\n    \"Budget Pricing\": \"Follow-up/Negotiation\",\n    \"Tooling\": \"Follow-up/Negotiation\",\n    \"Tool Hire\": \"Follow-up/Negotiation\",\n    \"Tender\": \"Follow-up/Negotiation\",\n    \"Bulk Buy\": \"Follow-up/Negotiation\",\n    \"Service\": \"Follow-up/Negotiation\",\n    \"Renewal\": \"Follow-up/Negotiation\",\n    \"Purchasing\": \"Quote Closed Won\",\n    \"Closed - Partial Supply\": \"Quote Closed Won\",\n    \"Closed - Won\": \"Quote Closed Won\",\n    \"Closed - Lost\": \"Quote Closed Lost\",\n    \"Lost - Price\": \"Quote Closed Lost\",\n    \"Lost - Customer Lost Job\": \"Quote Closed Lost\",\n    \"Lost - Lead Time\": \"Quote Closed Lost\",\n    \"Lost - Unable Supply Full Request\": \"Quote Closed Lost\",\n    \"Expired\": \"Quote Closed Lost\"\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "172859e5-ee58-4f44-99ec-25f5a7017418",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        352,
+        304
+      ],
+      "notesInFlow": true,
+      "notes": "statusToStage keys = HubSpot quote_status options. Edit mappings here."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/deals/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    { \"filters\": [ { \"propertyName\": \"netsuite_quote_number\", \"operator\": \"EQ\", \"value\": \"{{ $json.quote_number }}\" } ] },\n    { \"filters\": [ { \"propertyName\": \"netsuite_record_id\", \"operator\": \"EQ\", \"value\": \"{{ $json.opportunity_id }}\" } ] }\n  ],\n  \"properties\": [ \"dealname\", \"netsuite_record_id\", \"netsuite_quote_number\", \"quote_status\", \"amount\", \"dealstage\", \"pipeline\" ],\n  \"limit\": 10\n}",
+        "options": {}
+      },
+      "id": "7cec75b5-fb12-411c-b04d-248629b3f058",
+      "name": "Search HubSpot Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        592,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "OrycIvMGQfBUOpAi",
+          "name": "Plasson HubSpot"
+        }
+      },
+      "notes": "Deals with this quote number OR this NetSuite opportunity ID."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d052fea8-6d83-4419-a6fb-1a161d43e3d3",
+              "name": "quoteId",
+              "value": "={{ String($('Config').first().json.quote_id) }}",
+              "type": "string"
+            },
+            {
+              "id": "1d37004a-0f69-45b3-a6c5-d6e4b3eea795",
+              "name": "quoteNumber",
+              "value": "={{ $('Config').first().json.quote_number }}",
+              "type": "string"
+            },
+            {
+              "id": "6a4a45a7-a391-46de-8a82-c1c71fd9d8ee",
+              "name": "statusLabel",
+              "value": "={{ $('Config').first().json.status_label }}",
+              "type": "string"
+            },
+            {
+              "id": "b6316a39-27e9-40cc-954b-05e2a831e31c",
+              "name": "quoteStatus",
+              "value": "={{ Object.keys($('Config').first().json.statusToStage).find(name => name.toLowerCase() === String($('Config').first().json.status_label ?? '').replace(/^\\s*(lead|prospect|customer)\\s*-\\s*/i, '').replace(/^\\s*\\d+\\s*[.):-]\\s*/, '').replace(/\\s*-\\s*/g, ' - ').trim().toLowerCase()) ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "07c98179-1b8c-4504-9dbd-1b797cb8c623",
+              "name": "matchCount",
+              "value": "={{ $json.results.length }}",
+              "type": "number"
+            },
+            {
+              "id": "ab788d6b-4a4a-47d5-ba82-cb1e7b05cbf0",
+              "name": "deal",
+              "value": "={{ $json.results.find(d => d.properties.netsuite_quote_number === $('Config').first().json.quote_number) ?? $json.results.find(d => d.properties.netsuite_record_id === String($('Config').first().json.opportunity_id)) ?? {} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0f27541e-75cb-422e-a63d-77e8361851a2",
+      "name": "Match Deal",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        832,
+        304
+      ],
+      "notesInFlow": true,
+      "notes": "Quote number first, then opportunity ID. Maps the NetSuite status to a quote_status option."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ee04d32e-c3f9-47dc-a4f1-c3d18a3841d1",
+              "leftValue": "={{ $json.quoteStatus !== '' && $json.matchCount <= 1 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "f5081c4f-4322-4fb0-bfe6-85b10e71f016",
+      "name": "Can Sync?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1072,
+        304
+      ],
+      "notesInFlow": true,
+      "notes": "Status is mapped and at most one deal matched."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $('Match Deal').first().json.quoteStatus === '' ? 'Unmapped NetSuite status \"' + $('Match Deal').first().json.statusLabel + '\" on quote ' + $('Match Deal').first().json.quoteNumber + '. Add it to statusToStage in Config and to the HubSpot quote_status dropdown.' : $('Match Deal').first().json.matchCount + ' HubSpot deals match quote ' + $('Match Deal').first().json.quoteNumber + ' (duplicate deals). Nothing was written.' }}"
+      },
+      "id": "5add04b1-2ef6-4e62-892f-73d747c2d92c",
+      "name": "Stop: Cannot Sync",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4e2e44df-cbe8-4a85-b360-90d3533bb471",
+              "leftValue": "={{ $json.deal.id !== undefined && $json.deal.properties.pipeline === $('Config').first().json.pipelineId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "b6043c7e-45f7-4f19-8881-5c6cf5efc304",
+      "name": "Deal In Stockist Pipeline?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1312,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fa5c1c12-1a06-4c82-aff9-007a5ceffc8b",
+              "name": "ok",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "6db81176-8e12-4245-a751-68690df12d59",
+              "name": "skipped",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "e8bc173e-c03e-4f8f-8493-7e1f6355f7ed",
+              "name": "quoteId",
+              "value": "={{ $json.quoteId }}",
+              "type": "string"
+            },
+            {
+              "id": "d20d8462-4371-427a-bc15-cc55698e0ed3",
+              "name": "quoteNumber",
+              "value": "={{ $json.quoteNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "4172e445-0339-46cd-9b8c-2114d0238bc6",
+              "name": "reason",
+              "value": "={{ $json.deal.id ? 'Deal ' + $json.deal.id + ' is in pipeline ' + $json.deal.properties.pipeline + ', not the Existing Stockist pipeline.' : 'No HubSpot deal with quote number ' + $json.quoteNumber + ' or NetSuite Record ID ' + $('Config').first().json.opportunity_id + '.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e3659c3a-1d3b-4e94-98d8-17287d9fb3e0",
+      "name": "Skip Quote",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1552,
+        528
+      ],
+      "notesInFlow": true,
+      "notes": "Nothing written. The dispatcher parks the quote and re-checks it."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Config').first().json.netsuiteAccountHost }}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "transient"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.netsuiteToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { q: [\n  \"SELECT tl.uniquekey AS line_id, i.itemid AS sku, COALESCE(i.displayname, i.itemid) AS item_name,\",\n  \"tl.memo AS description, tl.quantity AS quantity, tl.rate AS rate, tl.foreignamount AS amount\",\n  \"FROM transactionline tl\",\n  \"LEFT JOIN item i ON i.id = tl.item\",\n  \"WHERE tl.transaction = \" + $('Match Deal').first().json.quoteId,\n  \"AND tl.mainline = 'F' AND tl.taxline = 'F' AND tl.item IS NOT NULL\",\n  \"ORDER BY tl.id\"\n].join('\\n') } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "1ee19554-b691-49c5-bb51-1b4c54fce3b0",
+      "name": "Get Quote Lines",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "SuiteQL is in the JSON body. Current lines on this quote."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/line_items/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [ { \"filters\": [ { \"propertyName\": \"associations.deal\", \"operator\": \"EQ\", \"value\": \"{{ $('Match Deal').first().json.deal.id }}\" } ] } ],\n  \"properties\": [ \"name\", \"netsuite_line_id\" ],\n  \"limit\": 100\n}",
+        "options": {}
+      },
+      "id": "e2137b68-cb84-4f02-9943-a42b9b9ad28f",
+      "name": "Get Deal Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2032,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "OrycIvMGQfBUOpAi",
+          "name": "Plasson HubSpot"
+        }
+      },
+      "notes": "Snapshot of the old lines, taken BEFORE the new ones are created."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d23f2e01-0c67-4b7e-8e0e-a2ff52d94af5",
+              "leftValue": "={{ $('Prepare Lines').first().json.lines.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "0967b720-c030-4209-a97d-773d4a3a7deb",
+      "name": "Quote Has Lines?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2272,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/line_items/batch/create",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { inputs: $('Prepare Lines').first().json.lines.map(line => ({\n  properties: line,\n  associations: [ { to: { id: $('Match Deal').first().json.deal.id }, types: [ { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 20 } ] } ]\n})) } }}",
+        "options": {}
+      },
+      "id": "d567e68f-dc30-47d8-a14c-3b7ec7590a80",
+      "name": "Create Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2512,
+        160
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "OrycIvMGQfBUOpAi",
+          "name": "Plasson HubSpot"
+        }
+      },
+      "notes": "Creates the lines built in Prepare Lines. No retry: a retry could duplicate lines."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c0629630-8207-499b-8e1b-c730b6d6e445",
+              "leftValue": "={{ ($json.results ?? []).length === $('Prepare Lines').first().json.lines.length && ($json.errors ?? []).length === 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "6a0d7875-4a64-40e5-b363-3a5e7b83e6a1",
+      "name": "All Lines Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2752,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=HubSpot created {{ ($json.results ?? []).length }} of {{ $('Prepare Lines').first().json.lines.length }} line items on deal {{ $('Match Deal').first().json.deal.id }}. Old lines were NOT archived; the next run retries."
+      },
+      "id": "d7bbb7c4-370a-4408-9f3d-a5e85e3982c2",
+      "name": "Stop: Create Failed",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2992,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "13243e0e-5f4e-4d78-99d9-d4e1a1c91f95",
+              "leftValue": "={{ $('Get Deal Line Items').first().json.results.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "7f63c18e-7fc9-4344-bc2b-9ce63be12c20",
+      "name": "Deal Has Old Lines?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2992,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/line_items/batch/archive",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { inputs: $('Get Deal Line Items').first().json.results.map(item => ({ id: item.id })) } }}",
+        "options": {}
+      },
+      "id": "ce2bb0ee-4f94-499a-b971-4c4c7d384cf9",
+      "name": "Archive Old Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3232,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "OrycIvMGQfBUOpAi",
+          "name": "Plasson HubSpot"
+        }
+      },
+      "notes": "Returns 204, so Always Output Data is on."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/v3/objects/deals/{{ $('Match Deal').first().json.deal.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { properties: {\n  netsuite_quote_number: $('Match Deal').first().json.quoteNumber,\n  amount: $('Prepare Lines').first().json.subtotal,\n  quote_status: $('Match Deal').first().json.quoteStatus,\n  dealstage: $('Match Deal').first().json.deal.properties.quote_status === $('Match Deal').first().json.quoteStatus\n    ? $('Match Deal').first().json.deal.properties.dealstage\n    : $('Config').first().json.stageIds[$('Config').first().json.statusToStage[$('Match Deal').first().json.quoteStatus]]\n} } }}",
+        "options": {}
+      },
+      "id": "80c2b128-81ca-4dd9-8a04-7020f3115d38",
+      "name": "Update Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3472,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "OrycIvMGQfBUOpAi",
+          "name": "Plasson HubSpot"
+        }
+      },
+      "notes": "LAST write. Amount = ex-GST subtotal of the lines. Stage only moves when quote_status changed."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "db6bc9ef-24e5-4e9c-b1ff-955ed8c0572c",
+              "name": "ok",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "484836d4-15ad-456e-8bc8-cd4a898f415a",
+              "name": "skipped",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "d37c138b-46ed-41d8-be48-86ae9d31b126",
+              "name": "quoteId",
+              "value": "={{ $('Match Deal').first().json.quoteId }}",
+              "type": "string"
+            },
+            {
+              "id": "344bb64f-7a52-4086-bcae-d393a40ba098",
+              "name": "quoteNumber",
+              "value": "={{ $('Match Deal').first().json.quoteNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "3f0ee7af-f822-4d16-a212-cb7bbfccb0ae",
+              "name": "dealId",
+              "value": "={{ $('Match Deal').first().json.deal.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "354a4c0f-7f5d-4438-b67a-f1deefcf39a3",
+      "name": "Finish",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3712,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "587dfd55-e71d-42d9-bd55-a474a1eaf783",
+              "name": "lines",
+              "type": "array",
+              "value": "={{ $json.items.map(line => ({\n  name: line.item_name || line.sku || 'NetSuite item',\n  description: line.description || '',\n  hs_sku: line.sku || '',\n  quantity: Math.abs(Number(line.quantity)),\n  price: Number(line.quantity) ? Number((Number(line.amount) / Number(line.quantity)).toFixed(4)) : Number(line.rate || 0),\n  netsuite_line_id: String(line.line_id)\n})) }}"
+            },
+            {
+              "id": "a836c69b-51fa-404b-895a-df35846c4732",
+              "name": "subtotal",
+              "type": "number",
+              "value": "={{ Math.round(Math.abs($json.items.reduce((sum, line) => sum + Number(line.amount || 0), 0)) * 100) / 100 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "90ddb465-86fb-4859-a62d-2940885db796",
+      "name": "Prepare Lines",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1792,
+        304
+      ],
+      "notesInFlow": true,
+      "notes": "NetSuite line -> HubSpot line item mapping. Prices ex GST: unit price = line Amount / Qty. subtotal = deal amount (ex GST)."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $json.quote_number }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        304
+      ],
+      "id": "9bef14e2-a548-40d1-8873-7b05452e8c3a",
+      "name": "Execution Data"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Called By Dispatcher": {
+      "main": [
+        [
+          {
+            "node": "Execution Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Search HubSpot Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search HubSpot Deal": {
+      "main": [
+        [
+          {
+            "node": "Match Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Deal": {
+      "main": [
+        [
+          {
+            "node": "Can Sync?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can Sync?": {
+      "main": [
+        [
+          {
+            "node": "Deal In Stockist Pipeline?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Cannot Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal In Stockist Pipeline?": {
+      "main": [
+        [
+          {
+            "node": "Get Quote Lines",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quote Lines": {
+      "main": [
+        [
+          {
+            "node": "Prepare Lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal Line Items": {
+      "main": [
+        [
+          {
+            "node": "Quote Has Lines?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quote Has Lines?": {
+      "main": [
+        [
+          {
+            "node": "Create Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Deal Has Old Lines?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Line Items": {
+      "main": [
+        [
+          {
+            "node": "All Lines Created?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Lines Created?": {
+      "main": [
+        [
+          {
+            "node": "Deal Has Old Lines?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Create Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal Has Old Lines?": {
+      "main": [
+        [
+          {
+            "node": "Archive Old Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Old Line Items": {
+      "main": [
+        [
+          {
+            "node": "Update Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Deal": {
+      "main": [
+        [
+          {
+            "node": "Finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Lines": {
+      "main": [
+        [
+          {
+            "node": "Get Deal Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execution Data": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b64842e8-3299-49f9-8246-64438ead2fee",
+  "meta": {
+    "instanceId": "2fc1737aa47c859c75acd1a4cce519163bfd3986289dd13a15f806220120abaf"
+  },
+  "nodeGroups": [],
+  "id": "DFU30ofiXJopLQrm",
+  "tags": []
+}
