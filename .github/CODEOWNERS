@@ -1,7 +1,7 @@
 # Replace the placeholders with real GitHub users or teams.
 # Last matching pattern wins.
 
-*                       @Yeran Hettiarachchy
-/shared/                @Yeran Hettiarachchy
-/.github/               @Yeran Hettiarachchy
-/clients/spl-simpro/    @Yeran Hettiarachchy
+*                       @Yeran
+/shared/                @Yeran
+/.github/               @Yeran
+/clients/spl-simpro/    @Yeran
