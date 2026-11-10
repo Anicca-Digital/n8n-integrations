@@ -3,7 +3,7 @@
 Read this before editing anything in `clients/nwi/`. Full detail is in `README.md` in this folder.
 
 ## Systems
-- **HubSpot**: CRM (deals, companies, contacts, line items). Credential: `NWI HubSpot App Token` (`hubspotAppToken`) - PLACEHOLDER name, confirm.
+- **HubSpot**: CRM (deals, companies, contacts, line items). Credential: `HubSpot Service Key account` (`hubspotAppToken`).
 - **Business Central (BC)**: master for customers, quotes, inventory, finance. API v2.0. Credential: `Business Central – NWI Group (client credentials)` (`oAuth2Api`, client credentials grant). Name taken from a screenshot; the dash is an en dash.
 - BC's native HubSpot connector already syncs Contacts and Products. Do not duplicate that.
 
@@ -29,6 +29,7 @@ Recorded 2026-11-09. No export from this instance exists yet.
 
 ## Decisions
 - HubSpot -> n8n uses the native Webhooks API (HubSpot developer app), not Data Hub.
-- Trigger: HubSpot webhook (developer platform project `nwi-bc-sync`, account nwi-group 443450748). The workflow accepts closed-won events from `dealstage`, `hs_is_closed_won` or `closed_won`. Pipeline `default` is still checked.
+- Trigger: HubSpot webhook (developer platform project `nwi-bc-sync`, account nwi-group 443450748). Subscription property is set in the project's `webhooks-hsmeta.json`.
+- One HubSpot contact = one BC customer. Contact property `business_central_id` holds the BC customer number. BC customer name = contact `company` property.
 - Match on SKU: HubSpot line item `hs_sku` = BC item `number`.
-- HubSpot properties: company `business_central_id` (BC customer number), deal `bc_order_id` (BC sales order number).
+- HubSpot properties: contact `business_central_id` (BC customer number), deal `bc_order_id` (BC sales order number).

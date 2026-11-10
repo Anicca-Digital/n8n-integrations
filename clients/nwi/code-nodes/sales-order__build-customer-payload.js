@@ -1,13 +1,15 @@
-// Builds the Business Central customer from the HubSpot company (+ contact).
-// Input ($input) is the contact record, or the empty contact.
+// Builds the Business Central customer from the HubSpot contact.
+// One contact = one BC customer. The contact hosts all the properties;
+// the BC customer NAME is the contact's Company name property.
+// Input ($input) is the Get Contact response.
 const cfg = $('Workflow Config').first().json;
-const company = $('Get Company').first().json.properties || {};
-const contact = $input.first().json.properties || {};
+const contact = $input.first().json;
+const c = contact.properties || {};
 
-const name = String(company.name || '').trim();
-if (!name) throw new Error(`HubSpot company ${$('Get Company').first().json.id} has no name`);
+const name = String(c.company || '').trim();
+if (!name) throw new Error(`HubSpot contact ${contact.id} has no Company name (property "company"), which becomes the BC customer name`);
 
-const countryRaw = String(company.country || '').trim();
+const countryRaw = String(c.country || '').trim();
 let country;
 if (/^[A-Za-z]{2}$/.test(countryRaw)) country = countryRaw.toUpperCase();
 else country = cfg.countryMap[countryRaw.toLowerCase()];   // undefined = omitted, BC keeps its value
@@ -16,22 +18,21 @@ const cut = (v, n) => (v === undefined || v === null ? undefined : String(v).tri
 const raw = {
   displayName: cut(name, 100),
   type: 'Company',
-  addressLine1: cut(company.address, 100),
-  addressLine2: cut(company.address2, 50),
-  city: cut(company.city, 30),
-  state: cut(company.state, 30),
+  addressLine1: cut(c.address, 100),
+  city: cut(c.city, 30),
+  state: cut(c.state, 30),
   country,
-  postalCode: cut(company.zip, 20),
-  phoneNumber: cut(company.phone || contact.phone, 30),
-  email: cut(contact.email, 80),
-  website: cut(company.website || company.domain, 80),
+  postalCode: cut(c.zip, 20),
+  phoneNumber: cut(c.phone || c.mobilephone, 30),
+  email: cut(c.email, 80),
+  website: cut(c.website, 80),
 };
 // Never send blanks: on update they would wipe values already in Business Central.
 const customerPayload = Object.fromEntries(
   Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
 );
 
-const bcId = String(company.business_central_id || '').trim();
+const bcId = String(c.business_central_id || '').trim();
 const isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);
 const bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, "''")}'`;
 

@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyId: '4b4f1461-9f6d-ea11-a813-000d3acaa8ce', // National Weighing & Instrument (from GET .../api/v2.0/companies)\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    // Any ONE of these starts the sync. Subscribe the HubSpot webhook to whichever property you use.\n    triggers: [\n      { property: 'dealstage', value: 'closedwon' },\n      { property: 'hs_is_closed_won', value: 'true' },\n      { property: 'closed_won', value: 'true' },\n    ],\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won',\n    companyProperties: 'name,address,address2,city,state,zip,country,phone,website,domain,business_central_id',\n    contactProperties: 'firstname,lastname,email,phone',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
+        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyId: '4b4f1461-9f6d-ea11-a813-000d3acaa8ce', // National Weighing & Instrument (from GET .../api/v2.0/companies)\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    // Any ONE of these starts the sync. Subscribe the HubSpot webhook to whichever property you use.\n    triggers: [\n      { property: 'dealstage', value: 'closedwon' },\n      { property: 'hs_is_closed_won', value: 'true' },\n      { property: 'closed_won', value: 'true' },\n    ],\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won',\n    contactProperties: 'firstname,lastname,company,email,phone,mobilephone,address,city,state,zip,country,website,business_central_id',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
       },
       "id": "4ceea568-0f0a-437a-927f-2c8ad55d3063",
       "name": "Workflow Config",
@@ -54,31 +54,6 @@
       "typeVersion": 4.2,
       "position": [
         128,
-        1312
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "t5mdhP4EGV51VOhT",
-          "name": "HubSpot Service Key account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Receive HubSpot Deal Events').item.json.body[0].objectId }}/associations/companies",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "options": {}
-      },
-      "id": "d8e94b1d-73b4-4c1a-84cd-60b77d767bd2",
-      "name": "Get Deal Company Associations",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        336,
         1312
       ],
       "retryOnFail": true,
@@ -143,7 +118,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Decide which associated records to use. Fails loudly if the deal can't become an order.\nconst dealId = String($('Get Deal').first().json.id);\nconst companies = $('Get Deal Company Associations').first().json.results || [];\nconst contacts = $('Get Deal Contact Associations').first().json.results || [];\nconst lineItems = $('Get Deal Line Item Associations').first().json.results || [];\n\nif (companies.length === 0) throw new Error(`Deal ${dealId} has no associated company`);\nif (lineItems.length === 0) throw new Error(`Deal ${dealId} has no line items`);\n\n// Primary company is association type 5; otherwise the first one.\nconst isPrimary = (a) => (a.associationTypes || []).some((t) => t.typeId === 5);\nconst company = companies.find(isPrimary) || companies[0];\n\nreturn [{ json: {\n  dealId,\n  companyId: String(company.toObjectId),\n  contactId: contacts.length ? String(contacts[0].toObjectId) : null,\n  lineItemIds: lineItems.map((l) => String(l.toObjectId)),\n} }];\n"
+        "jsCode": "// One BC customer per HubSpot contact. Fails loudly if the deal can't become an order.\nconst dealId = String($('Get Deal').first().json.id);\nconst contacts = $('Get Deal Contact Associations').first().json.results || [];\nconst lineItems = $('Get Deal Line Item Associations').first().json.results || [];\n\nif (contacts.length === 0) throw new Error(`Deal ${dealId} has no associated contact`);\nif (lineItems.length === 0) throw new Error(`Deal ${dealId} has no line items`);\n\n// HubSpot has no \"primary contact\" on a deal: with several contacts the first one returned is used.\nreturn [{ json: {\n  dealId,\n  contactId: String(contacts[0].toObjectId),\n  lineItemIds: lineItems.map((l) => String(l.toObjectId)),\n} }];\n"
       },
       "id": "10d39beb-830b-4baf-8632-8d701957ba89",
       "name": "Pick Associated Records",
@@ -151,75 +126,6 @@
       "typeVersion": 2,
       "position": [
         992,
-        1312
-      ]
-    },
-    {
-      "parameters": {
-        "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $json.companyId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "properties",
-              "value": "={{ $('Workflow Config').first().json.hubspot.companyProperties }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "1cbd877d-fc75-4caf-b5dd-b9e2fd173f45",
-      "name": "Get Company",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1216,
-        1312
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "id": "t5mdhP4EGV51VOhT",
-          "name": "HubSpot Service Key account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "149267c5-c819-591a-98ec-7ad513406ea3",
-              "leftValue": "={{ String(Boolean($('Pick Associated Records').first().json.contactId)) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "2eb286c0-eb21-4c76-8925-87dbd4960d38",
-      "name": "Deal Has Contact",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        1440,
         1312
       ]
     },
@@ -244,36 +150,29 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1664,
-        1232
+        1216,
+        1312
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "t5mdhP4EGV51VOhT",
+          "name": "HubSpot Service Key account"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Deal has no associated contact: pass an empty contact through so the next step has a uniform input.\nreturn [{ json: { properties: {} } }];\n"
-      },
-      "id": "d90d9530-1f09-4274-ba81-04a0ad46410f",
-      "name": "Set Empty Contact",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1664,
-        1408
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Builds the Business Central customer from the HubSpot company (+ contact).\n// Input ($input) is the contact record, or the empty contact.\nconst cfg = $('Workflow Config').first().json;\nconst company = $('Get Company').first().json.properties || {};\nconst contact = $input.first().json.properties || {};\n\nconst name = String(company.name || '').trim();\nif (!name) throw new Error(`HubSpot company ${$('Get Company').first().json.id} has no name`);\n\nconst countryRaw = String(company.country || '').trim();\nlet country;\nif (/^[A-Za-z]{2}$/.test(countryRaw)) country = countryRaw.toUpperCase();\nelse country = cfg.countryMap[countryRaw.toLowerCase()];   // undefined = omitted, BC keeps its value\n\nconst cut = (v, n) => (v === undefined || v === null ? undefined : String(v).trim().slice(0, n));\nconst raw = {\n  displayName: cut(name, 100),\n  type: 'Company',\n  addressLine1: cut(company.address, 100),\n  addressLine2: cut(company.address2, 50),\n  city: cut(company.city, 30),\n  state: cut(company.state, 30),\n  country,\n  postalCode: cut(company.zip, 20),\n  phoneNumber: cut(company.phone || contact.phone, 30),\n  email: cut(contact.email, 80),\n  website: cut(company.website || company.domain, 80),\n};\n// Never send blanks: on update they would wipe values already in Business Central.\nconst customerPayload = Object.fromEntries(\n  Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')\n);\n\nconst bcId = String(company.business_central_id || '').trim();\nconst isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);\nconst bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, \"''\")}'`;\n\nreturn [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload } }];\n"
+        "jsCode": "// Builds the Business Central customer from the HubSpot contact.\n// One contact = one BC customer. The contact hosts all the properties;\n// the BC customer NAME is the contact's Company name property.\n// Input ($input) is the Get Contact response.\nconst cfg = $('Workflow Config').first().json;\nconst contact = $input.first().json;\nconst c = contact.properties || {};\n\nconst name = String(c.company || '').trim();\nif (!name) throw new Error(`HubSpot contact ${contact.id} has no Company name (property \"company\"), which becomes the BC customer name`);\n\nconst countryRaw = String(c.country || '').trim();\nlet country;\nif (/^[A-Za-z]{2}$/.test(countryRaw)) country = countryRaw.toUpperCase();\nelse country = cfg.countryMap[countryRaw.toLowerCase()];   // undefined = omitted, BC keeps its value\n\nconst cut = (v, n) => (v === undefined || v === null ? undefined : String(v).trim().slice(0, n));\nconst raw = {\n  displayName: cut(name, 100),\n  type: 'Company',\n  addressLine1: cut(c.address, 100),\n  city: cut(c.city, 30),\n  state: cut(c.state, 30),\n  country,\n  postalCode: cut(c.zip, 20),\n  phoneNumber: cut(c.phone || c.mobilephone, 30),\n  email: cut(c.email, 80),\n  website: cut(c.website, 80),\n};\n// Never send blanks: on update they would wipe values already in Business Central.\nconst customerPayload = Object.fromEntries(\n  Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')\n);\n\nconst bcId = String(c.business_central_id || '').trim();\nconst isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);\nconst bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, \"''\")}'`;\n\nreturn [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload } }];\n"
       },
       "id": "4838b8d8-e193-4665-bb3d-66aa138278ab",
       "name": "Build Customer Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1872,
+        1440,
         1312
       ]
     },
@@ -293,14 +192,20 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2096,
+        1664,
         1312
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "Read-only batch call (POST is only the HubSpot batch-read convention), so retry is safe."
+      "notes": "Read-only batch call (POST is only the HubSpot batch-read convention), so retry is safe.",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "t5mdhP4EGV51VOhT",
+          "name": "HubSpot Service Key account"
+        }
+      }
     },
     {
       "parameters": {
@@ -311,7 +216,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2320,
+        1888,
         1312
       ],
       "notesInFlow": true,
@@ -344,11 +249,11 @@
         "options": {}
       },
       "id": "10dc095f-b679-4632-b4cd-df00b651aa91",
-      "name": "Company Has BC ID",
+      "name": "Contact Has BC ID",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2544,
+        2112,
         1312
       ]
     },
@@ -386,23 +291,28 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2752,
+        2320,
         1216
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// The BC ID on the HubSpot company must resolve to exactly one BC customer.\nconst found = $input.first().json.value || [];\nconst ref = $('Build Customer Payload').first().json.bcId;\nif (found.length !== 1) {\n  throw new Error(`HubSpot company has business_central_id \"${ref}\" but Business Central returned ${found.length} matching customers. Not creating a duplicate - fix the ID in HubSpot.`);\n}\nreturn [{ json: { customerId: found[0].id, customerNumber: found[0].number } }];\n"
+        "jsCode": "// The BC ID on the HubSpot company must resolve to exactly one BC customer.\nconst found = $input.first().json.value || [];\nconst ref = $('Build Customer Payload').first().json.bcId;\nif (found.length !== 1) {\n  throw new Error(`HubSpot contact has business_central_id \"${ref}\" but Business Central returned ${found.length} matching customers. Not creating a duplicate - fix the ID in HubSpot.`);\n}\nreturn [{ json: { customerId: found[0].id, customerNumber: found[0].number } }];\n"
       },
       "id": "8d9e37b3-2d9f-40cd-9f7c-d9a75ac0c6b7",
       "name": "Check BC Customer Found",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2976,
+        2544,
         1216
       ]
     },
@@ -435,14 +345,19 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3200,
+        2768,
         1216
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "PATCH needs If-Match. Only non-blank HubSpot values are sent."
+      "notes": "PATCH needs If-Match. Only non-blank HubSpot values are sent.",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      }
     },
     {
       "parameters": {
@@ -453,7 +368,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3424,
+        2992,
         1216
       ]
     },
@@ -482,16 +397,21 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2752,
+        2320,
         1440
       ],
       "notesInFlow": true,
-      "notes": "Create call: no retry, by design."
+      "notes": "Create call: no retry, by design.",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      }
     },
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $('Pick Associated Records').first().json.companyId }}",
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $('Pick Associated Records').first().json.contactId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
@@ -500,18 +420,24 @@
         "options": {}
       },
       "id": "a1f51ee9-bd03-4f33-a27d-b623672c39e8",
-      "name": "Write BC Customer Number To Company",
+      "name": "Write BC Customer Number To Contact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2976,
+        2544,
         1440
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "Written straight after the create so a later failure cannot lose the link."
+      "notes": "Written straight after the create so a later failure cannot lose the link.",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "t5mdhP4EGV51VOhT",
+          "name": "HubSpot Service Key account"
+        }
+      }
     },
     {
       "parameters": {
@@ -522,7 +448,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3200,
+        2768,
         1440
       ]
     },
@@ -535,7 +461,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3632,
+        3200,
         1312
       ]
     },
@@ -573,12 +499,17 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3856,
+        3424,
         1312
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      }
     },
     {
       "parameters": {
@@ -611,7 +542,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4080,
+        3648,
         1312
       ],
       "notesInFlow": true,
@@ -626,7 +557,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4304,
+        3872,
         1216
       ]
     },
@@ -655,11 +586,16 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4304,
+        3872,
         1440
       ],
       "notesInFlow": true,
-      "notes": "Single call (header + lines). Create call: no retry, by design."
+      "notes": "Single call (header + lines). Create call: no retry, by design.",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      }
     },
     {
       "parameters": {
@@ -670,7 +606,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4512,
+        4080,
         1440
       ]
     },
@@ -690,16 +626,22 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4736,
+        4304,
         1312
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "t5mdhP4EGV51VOhT",
+          "name": "HubSpot Service Key account"
+        }
+      }
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, companies.read/write, contacts.read, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: company `business_central_id`, deal `bc_order_id` (single-line text). \n6. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_id` and deal `bc_order_id` (both single-line text). \n6. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
         "height": 240,
         "width": 700,
         "color": 5
@@ -742,17 +684,6 @@
       "main": [
         [
           {
-            "node": "Get Deal Company Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Deal Company Associations": {
-      "main": [
-        [
-          {
             "node": "Get Deal Contact Associations",
             "type": "main",
             "index": 0
@@ -786,36 +717,7 @@
       "main": [
         [
           {
-            "node": "Get Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Company": {
-      "main": [
-        [
-          {
-            "node": "Deal Has Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Deal Has Contact": {
-      "main": [
-        [
-          {
             "node": "Get Contact",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Set Empty Contact",
             "type": "main",
             "index": 0
           }
@@ -823,17 +725,6 @@
       ]
     },
     "Get Contact": {
-      "main": [
-        [
-          {
-            "node": "Build Customer Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set Empty Contact": {
       "main": [
         [
           {
@@ -870,25 +761,7 @@
       "main": [
         [
           {
-            "node": "Company Has BC ID",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Company Has BC ID": {
-      "main": [
-        [
-          {
-            "node": "Find BC Customer",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Create BC Customer",
+            "node": "Contact Has BC ID",
             "type": "main",
             "index": 0
           }
@@ -943,18 +816,7 @@
       "main": [
         [
           {
-            "node": "Write BC Customer Number To Company",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Write BC Customer Number To Company": {
-      "main": [
-        [
-          {
-            "node": "Customer Ready (New)",
+            "node": "Write BC Customer Number To Contact",
             "type": "main",
             "index": 0
           }
@@ -1039,6 +901,35 @@
         [
           {
             "node": "Write BC Order Number To Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Has BC ID": {
+      "main": [
+        [
+          {
+            "node": "Find BC Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create BC Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write BC Customer Number To Contact": {
+      "main": [
+        [
+          {
+            "node": "Customer Ready (New)",
             "type": "main",
             "index": 0
           }

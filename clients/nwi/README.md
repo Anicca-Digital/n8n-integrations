@@ -2,15 +2,15 @@
 
 One workflow: `[NWI] HubSpot Deal Closed Won -> BC Customer + Sales Order` (`workflows/nwi__deal-closedwon-to-bc__v1.json`).
 
-**Trigger:** HubSpot webhook `POST /webhook/nwi-hubspot-deal-closedwon` (header auth), real time, one execution per deal. HubSpot subscription: any one of Deal `dealstage`, `hs_is_closed_won` or `closed_won` (all three are accepted; see `triggers` in Workflow Config).
+**Trigger:** HubSpot webhook `POST /webhook/nwi-hubspot-deal-closedwon`, real time, one execution per deal. The workflow in n8n is the source of truth (exported 2026-11-11, n8n Cloud `nwigroup.app.n8n.cloud`).
 
-**What it does:** loads the deal, its company, contact and line items. Company has `business_central_id`: update the BC customer. No ID: create the BC customer and write its number back to the company. Then create the BC sales order (header + lines) and write its number to `bc_order_id` on the deal.
+**What it does:** loads the deal, its contact and line items. One HubSpot **contact** = one BC **customer**. The contact hosts all the customer properties (address, phone, email, website, `business_central_id`); the BC customer name is the contact's **Company name** property (`company`). Contact has `business_central_id`: update that BC customer. No ID: create the BC customer and write its number back to the contact. Then create the BC sales order (header + lines) and write its number to `bc_order_id` on the deal.
 
 ## Safety rails
-- Event is not a closed-won trigger (`dealstage` = `closedwon`, `hs_is_closed_won` = `true`, `closed_won` = `true`), e.g. an un-tick or another stage: execution ends quietly.
-- A webhook call carrying more than one closed-won deal fails loudly (this workflow handles one deal per run).
-- Deal already has `bc_order_id`, is not in pipeline `default`, or is not closed won on any trigger property: skipped.
+- NOTE: the live workflow has no trigger-event filter. Every event the HubSpot subscription sends starts an order, including an un-tick of `closed_won`.
+- Deal with no associated contact or no line items fails the run. Several contacts: the first one returned is used.
+- Contact with no Company name fails the run (it becomes the BC customer name).
 - BC sales order is looked up by `externalDocumentNumber` = HubSpot deal ID before creating, so a re-run never creates a second order.
 - Any line with no SKU, quantity or price fails the run before anything is written to BC.
-- `business_central_id` that finds 0 or 2+ BC customers fails the run; no duplicate customer is created.
+- `business_central_id` on the contact that finds 0 or 2+ BC customers fails the run; no duplicate customer is created.
 - No retries on the two create calls.
