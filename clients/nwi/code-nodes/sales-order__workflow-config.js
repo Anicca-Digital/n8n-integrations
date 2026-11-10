@@ -3,9 +3,9 @@ const bc = {
   baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',
   tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',
   environment: 'Production',
-  companyName: 'National Weighing & Instrument', // the company's `name`; its GUID is looked up each run
+  companyId: '4b4f1461-9f6d-ea11-a813-000d3acaa8ce', // National Weighing & Instrument (from GET .../api/v2.0/companies)
 };
-bc.companiesUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies`;
+bc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;
 return [{ json: {
   hubspot: {
     pipelineId: 'default',

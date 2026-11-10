@@ -22,7 +22,7 @@ Read these before building or editing. An export in this folder always wins over
 | Credential names (exact spelling) | BC: see above. HubSpot app token and webhook auth names are still placeholders |
 | BC tenant ID | `0dc6b780-5b9e-4809-afb6-6bc499280f23` |
 | BC environment | `Production` |
-| BC company | `National Weighing & Instrument`. GUID is looked up by name on every run (Find BC Company node) |
+| BC company | `National Weighing & Instrument`, GUID `4b4f1461-9f6d-ea11-a813-000d3acaa8ce` (set in Workflow Config; found by running a GET on the BC companies endpoint) |
 | Consultant access level | UNKNOWN (ask) |
 
 Recorded 2026-11-09. No export from this instance exists yet.
