@@ -32,8 +32,22 @@ const customerPayload = Object.fromEntries(
   Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
 );
 
+// New customers go through the OData Customer_Card page, which uses page field names.
+const odataPayload = Object.fromEntries(Object.entries({
+  ...cfg.bc.newCustomerDefaults,   // posting groups first
+  Name: raw.displayName,
+  Address: raw.addressLine1,
+  City: raw.city,
+  County: raw.state,
+  Post_Code: raw.postalCode,
+  Country_Region_Code: raw.country,
+  Phone_No: raw.phoneNumber,
+  E_Mail: raw.email,
+  Home_Page: raw.website,
+}).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''));
+
 const bcId = String(c.business_central_id || '').trim();
 const isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);
 const bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, "''")}'`;
 
-return [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload } }];
+return [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload, odataPayload } }];

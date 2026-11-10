@@ -6,6 +6,13 @@ const bc = {
   companyId: '4b4f1461-9f6d-ea11-a813-000d3acaa8ce', // National Weighing & Instrument (from GET .../api/v2.0/companies)
 };
 bc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;
+// New customers are CREATED through the OData Customer_Card page (web service published in BC).
+// The standard API create fails: BC applies the customer template's GST 10% default, which does not exist.
+// Updates, lookups and sales orders still use the standard API.
+bc.companyName = 'National Weighing & Instrument';
+bc.customerCardUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/ODataV4/Company('${encodeURIComponent(bc.companyName)}')/Customer_Card`;
+// Same values as existing customers (e.g. CM007815). Sent first so BC does not apply the template's bad GST group.
+bc.newCustomerDefaults = { Gen_Bus_Posting_Group: 'DOMESTIC', VAT_Bus_Posting_Group: 'DOMESTIC', Customer_Posting_Group: 'DOMESTIC' };
 return [{ json: {
   hubspot: {
     pipelineId: 'default',
