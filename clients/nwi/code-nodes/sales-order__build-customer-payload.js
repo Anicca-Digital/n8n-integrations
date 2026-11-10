@@ -33,6 +33,7 @@ const customerPayload = Object.fromEntries(
 );
 
 // New customers go through the OData Customer_Card page, which uses page field names.
+// Segment and Responsibility_Center exist only on the page, not in the standard API.
 const odataPayload = Object.fromEntries(Object.entries({
   ...cfg.bc.newCustomerDefaults,   // posting groups first
   Name: raw.displayName,
@@ -44,9 +45,11 @@ const odataPayload = Object.fromEntries(Object.entries({
   Phone_No: raw.phoneNumber,
   E_Mail: raw.email,
   Home_Page: raw.website,
+  Segment: cut(c.segment, 30),
+  Responsibility_Center: cut(c.responsibility_center, 10),
 }).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''));
 
-const bcId = String(c.business_central_id || '').trim();
+const bcId = String(c.business_central_record_id || '').trim();
 const isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);
 const bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, "''")}'`;
 

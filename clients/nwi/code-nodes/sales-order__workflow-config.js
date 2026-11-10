@@ -23,7 +23,7 @@ return [{ json: {
       { property: 'closed_won', value: 'true' },
     ],
     dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won',
-    contactProperties: 'firstname,lastname,company,email,phone,mobilephone,address,city,state,zip,country,website,business_central_id',
+    contactProperties: 'firstname,lastname,company,email,phone,mobilephone,address,city,state,zip,country,website,business_central_record_id,segment,responsibility_center',
     lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],
   },
   bc,

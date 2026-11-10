@@ -2,6 +2,6 @@
 const found = $input.first().json.value || [];
 const ref = $('Build Customer Payload').first().json.bcId;
 if (found.length !== 1) {
-  throw new Error(`HubSpot contact has business_central_id "${ref}" but Business Central returned ${found.length} matching customers. Not creating a duplicate - fix the ID in HubSpot.`);
+  throw new Error(`HubSpot contact has business_central_record_id "${ref}" but Business Central returned ${found.length} matching customers. Not creating a duplicate - fix the ID in HubSpot.`);
 }
 return [{ json: { customerId: found[0].id, customerNumber: found[0].number } }];
