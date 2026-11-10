@@ -1,3 +1,3 @@
-// Output of "Update BC Customer" is the updated customer.
+// Output of "Update BC Customer" is the updated Customer_Card record (customer number = "No").
 const c = $input.first().json;
-return [{ json: { customerId: c.id, customerNumber: c.number } }];
+return [{ json: { customerNumber: c.No } }];

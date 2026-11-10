@@ -32,10 +32,12 @@ const customerPayload = Object.fromEntries(
   Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
 );
 
-// New customers go through the OData Customer_Card page, which uses page field names.
+// Fields written through the OData Customer_Card page (page field names).
 // Segment and Responsibility_Center exist only on the page, not in the standard API.
-const odataPayload = Object.fromEntries(Object.entries({
-  ...cfg.bc.newCustomerDefaults,   // posting groups first
+const nonBlank = (obj) => Object.fromEntries(
+  Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+);
+const pageFields = {
   Name: raw.displayName,
   Address: raw.addressLine1,
   City: raw.city,
@@ -47,10 +49,20 @@ const odataPayload = Object.fromEntries(Object.entries({
   Home_Page: raw.website,
   Segment: cut(c.segment, 30),
   Responsibility_Center: cut(c.responsibility_center, 10),
-}).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''));
+};
+// New customer: posting groups first. Existing customer: never touch their posting groups.
+const odataPayload = nonBlank({ ...cfg.bc.newCustomerDefaults, ...pageFields });
+const odataUpdatePayload = nonBlank(pageFields);
+
+// The HubSpot contact becomes the BC customer's primary contact (shows as "ERC Primary Contact Name").
+// Skipped when the HubSpot contact has no first or last name.
+const personName = [c.firstname, c.lastname].map((s) => String(s || '').trim()).filter(Boolean).join(' ');
+const personContact = personName
+  ? nonBlank({ displayName: cut(personName, 100), email: cut(c.email, 80), phoneNumber: cut(c.phone, 30), mobilePhoneNumber: cut(c.mobilephone, 30) })
+  : null;
 
 const bcId = String(c.business_central_record_id || '').trim();
 const isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);
 const bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, "''")}'`;
 
-return [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload, odataPayload } }];
+return [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload, odataPayload, odataUpdatePayload, personContact } }];

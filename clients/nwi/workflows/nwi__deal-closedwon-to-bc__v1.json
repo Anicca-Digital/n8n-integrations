@@ -165,7 +165,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Builds the Business Central customer from the HubSpot contact.\n// One contact = one BC customer. The contact hosts all the properties;\n// the BC customer NAME is the contact's Company name property.\n// Input ($input) is the Get Contact response.\nconst cfg = $('Workflow Config').first().json;\nconst contact = $input.first().json;\nconst c = contact.properties || {};\n\nconst name = String(c.company || '').trim();\nif (!name) throw new Error(`HubSpot contact ${contact.id} has no Company name (property \"company\"), which becomes the BC customer name`);\n\nconst countryRaw = String(c.country || '').trim();\nlet country;\nif (/^[A-Za-z]{2}$/.test(countryRaw)) country = countryRaw.toUpperCase();\nelse country = cfg.countryMap[countryRaw.toLowerCase()];   // undefined = omitted, BC keeps its value\n\nconst cut = (v, n) => (v === undefined || v === null ? undefined : String(v).trim().slice(0, n));\nconst raw = {\n  displayName: cut(name, 100),\n  type: 'Company',\n  addressLine1: cut(c.address, 100),\n  city: cut(c.city, 30),\n  state: cut(c.state, 30),\n  country,\n  postalCode: cut(c.zip, 20),\n  phoneNumber: cut(c.phone || c.mobilephone, 30),\n  email: cut(c.email, 80),\n  website: cut(c.website, 80),\n};\n// Never send blanks: on update they would wipe values already in Business Central.\nconst customerPayload = Object.fromEntries(\n  Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')\n);\n\n// New customers go through the OData Customer_Card page, which uses page field names.\n// Segment and Responsibility_Center exist only on the page, not in the standard API.\nconst odataPayload = Object.fromEntries(Object.entries({\n  ...cfg.bc.newCustomerDefaults,   // posting groups first\n  Name: raw.displayName,\n  Address: raw.addressLine1,\n  City: raw.city,\n  County: raw.state,\n  Post_Code: raw.postalCode,\n  Country_Region_Code: raw.country,\n  Phone_No: raw.phoneNumber,\n  E_Mail: raw.email,\n  Home_Page: raw.website,\n  Segment: cut(c.segment, 30),\n  Responsibility_Center: cut(c.responsibility_center, 10),\n}).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''));\n\nconst bcId = String(c.business_central_record_id || '').trim();\nconst isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);\nconst bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, \"''\")}'`;\n\nreturn [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload, odataPayload } }];\n"
+        "jsCode": "// Builds the Business Central customer from the HubSpot contact.\n// One contact = one BC customer. The contact hosts all the properties;\n// the BC customer NAME is the contact's Company name property.\n// Input ($input) is the Get Contact response.\nconst cfg = $('Workflow Config').first().json;\nconst contact = $input.first().json;\nconst c = contact.properties || {};\n\nconst name = String(c.company || '').trim();\nif (!name) throw new Error(`HubSpot contact ${contact.id} has no Company name (property \"company\"), which becomes the BC customer name`);\n\nconst countryRaw = String(c.country || '').trim();\nlet country;\nif (/^[A-Za-z]{2}$/.test(countryRaw)) country = countryRaw.toUpperCase();\nelse country = cfg.countryMap[countryRaw.toLowerCase()];   // undefined = omitted, BC keeps its value\n\nconst cut = (v, n) => (v === undefined || v === null ? undefined : String(v).trim().slice(0, n));\nconst raw = {\n  displayName: cut(name, 100),\n  type: 'Company',\n  addressLine1: cut(c.address, 100),\n  city: cut(c.city, 30),\n  state: cut(c.state, 30),\n  country,\n  postalCode: cut(c.zip, 20),\n  phoneNumber: cut(c.phone || c.mobilephone, 30),\n  email: cut(c.email, 80),\n  website: cut(c.website, 80),\n};\n// Never send blanks: on update they would wipe values already in Business Central.\nconst customerPayload = Object.fromEntries(\n  Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')\n);\n\n// Fields written through the OData Customer_Card page (page field names).\n// Segment and Responsibility_Center exist only on the page, not in the standard API.\nconst nonBlank = (obj) => Object.fromEntries(\n  Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')\n);\nconst pageFields = {\n  Name: raw.displayName,\n  Address: raw.addressLine1,\n  City: raw.city,\n  County: raw.state,\n  Post_Code: raw.postalCode,\n  Country_Region_Code: raw.country,\n  Phone_No: raw.phoneNumber,\n  E_Mail: raw.email,\n  Home_Page: raw.website,\n  Segment: cut(c.segment, 30),\n  Responsibility_Center: cut(c.responsibility_center, 10),\n};\n// New customer: posting groups first. Existing customer: never touch their posting groups.\nconst odataPayload = nonBlank({ ...cfg.bc.newCustomerDefaults, ...pageFields });\nconst odataUpdatePayload = nonBlank(pageFields);\n\n// The HubSpot contact becomes the BC customer's primary contact (shows as \"ERC Primary Contact Name\").\n// Skipped when the HubSpot contact has no first or last name.\nconst personName = [c.firstname, c.lastname].map((s) => String(s || '').trim()).filter(Boolean).join(' ');\nconst personContact = personName\n  ? nonBlank({ displayName: cut(personName, 100), email: cut(c.email, 80), phoneNumber: cut(c.phone, 30), mobilePhoneNumber: cut(c.mobilephone, 30) })\n  : null;\n\nconst bcId = String(c.business_central_record_id || '').trim();\nconst isGuid = /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(bcId);\nconst bcCustomerFilter = isGuid ? `id eq ${bcId}` : `number eq '${bcId.replace(/'/g, \"''\")}'`;\n\nreturn [{ json: { hasBcId: bcId !== '', bcId, bcCustomerFilter, customerPayload, odataPayload, odataUpdatePayload, personContact } }];\n"
       },
       "id": "4838b8d8-e193-4665-bb3d-66aa138278ab",
       "name": "Build Customer Payload",
@@ -319,7 +319,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/customers({{ $json.customerId }})",
+        "url": "={{ $('Workflow Config').first().json.bc.customerCardUrl }}('{{ $json.customerNumber }}')",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -337,7 +337,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $('Build Customer Payload').first().json.customerPayload }}",
+        "jsonBody": "={{ $('Build Customer Payload').first().json.odataUpdatePayload }}",
         "options": {}
       },
       "id": "bba081c1-2e79-4631-bf82-664ba9176c22",
@@ -352,7 +352,7 @@
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "PATCH needs If-Match. Only non-blank HubSpot values are sent.",
+      "notes": "OData Customer_Card PATCH: the standard API cannot carry Segment / Responsibility_Center. Posting groups are never touched.",
       "credentials": {
         "oAuth2Api": {
           "name": "Business Central – NWI Group (client credentials)"
@@ -361,7 +361,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Output of \"Update BC Customer\" is the updated customer.\nconst c = $input.first().json;\nreturn [{ json: { customerId: c.id, customerNumber: c.number } }];\n"
+        "jsCode": "// Output of \"Update BC Customer\" is the updated Customer_Card record (customer number = \"No\").\nconst c = $input.first().json;\nreturn [{ json: { customerNumber: c.No } }];\n"
       },
       "id": "08b69428-4104-46f2-9859-5067cc55a8b8",
       "name": "Customer Ready (Existing)",
@@ -641,7 +641,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_record_id` and deal `bc_order_id` (both single-line text). \n6. BC web service **Customer_Card** (page 21) must stay published: new customers are created through it. Fix the customer templates' GST group in BC if you want to return to the standard API.\n7. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_record_id` and deal `bc_order_id` (both single-line text). \n6. BC web service **Customer_Card** (page 21) must stay published: new customers are created through it. Fix the customer templates' GST group in BC if you want to return to the standard API.\n7. Primary contact: after the order, the HubSpot contact is created as a BC Person contact under the customer's company contact and set as Primary Contact No. (shows as ERC Primary Contact Name). This runs after the order is created, so a failure here never blocks the order.\n8. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
         "height": 240,
         "width": 700,
         "color": 5
@@ -654,6 +654,303 @@
         -416,
         752
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4f501bcf-9886-53a4-993d-ba0dfe52bec0",
+              "leftValue": "={{ String(Boolean($('Build Customer Payload').first().json.personContact)) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "e579ed26-8401-52b1-b0fd-81c6970932af",
+      "name": "Contact Has A Name",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4528,
+        1312
+      ],
+      "notesInFlow": true,
+      "notes": "No first/last name on the HubSpot contact: nothing to make primary."
+    },
+    {
+      "parameters": {},
+      "id": "25e4e917-ff73-51db-bebb-a561aa2b16c4",
+      "name": "Skip Primary Contact",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4752,
+        1512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/customers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ \"number eq '\" + $('Build Sales Order Payload').first().json.customerNumber + \"'\" }}"
+            },
+            {
+              "name": "$expand",
+              "value": "contactsInformation"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5e3d23ac-1561-5c53-988f-ff6337ac2583",
+      "name": "Get BC Customer Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4752,
+        1312
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// The customer's company contact in BC (type Company). The Person contact is created under it.\nconst cust = ($input.first().json.value || [])[0];\nif (!cust) throw new Error('Business Central customer not found when looking up its contacts');\nconst company = (cust.contactsInformation || []).find((x) => x.contactType === 'Company');\nif (!company) throw new Error(`BC customer ${cust.number} has no company contact`);\n\nconst p = $('Build Customer Payload').first().json.personContact;\nconst q = (s) => String(s).replace(/'/g, \"''\");\nconst match = p.email ? `email eq '${q(p.email)}'` : `displayName eq '${q(p.displayName)}'`;\nconst createContactPayload = Object.fromEntries(\n  Object.entries({ type: 'Person', companyNumber: company.contactNumber, ...p })\n    .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')\n);\nreturn [{ json: {\n  customerNumber: cust.number,\n  companyContactNumber: company.contactNumber,\n  contactFilter: `type eq 'Person' and companyNumber eq '${company.contactNumber}' and ${match}`,\n  createContactPayload,\n} }];\n"
+      },
+      "id": "e285d486-f282-5dd0-bb83-1da0a820a093",
+      "name": "Find Company Contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4976,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ $json.contactFilter }}"
+            },
+            {
+              "name": "$select",
+              "value": "id,number,displayName"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a7a28b89-62fb-5817-b27c-b04df41a6c38",
+      "name": "Find Existing Person Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5200,
+        1312
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "26d47a29-c378-570c-b6f1-4e4b6399a7fd",
+              "leftValue": "={{ String(($('Find Existing Person Contact').first().json.value || []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a75206ea-b50f-5d79-88bb-d32856eca06c",
+      "name": "Person Contact Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5424,
+        1312
+      ],
+      "notesInFlow": true,
+      "notes": "Re-run safety: the same person is never created twice."
+    },
+    {
+      "parameters": {
+        "jsCode": "// A Person contact for this HubSpot contact already exists under the company: reuse it.\nconst found = ($input.first().json.value || [])[0];\nreturn [{ json: { contactNumber: found.number } }];\n"
+      },
+      "id": "6a218d51-7f50-50ae-8d46-62bef70dc83d",
+      "name": "Contact Ready (Existing)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5648,
+        1212
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Find Company Contact').first().json.createContactPayload }}",
+        "options": {}
+      },
+      "id": "dbea3caa-d9cb-50df-814b-b7055f841c1a",
+      "name": "Create BC Person Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5648,
+        1432
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Create call: no retry, by design."
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $input.first().json;\nreturn [{ json: { contactNumber: c.number } }];\n"
+      },
+      "id": "d42937ab-d8ce-5e8e-bc36-567199e270d6",
+      "name": "Contact Ready (New)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5872,
+        1432
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bc.customerCardUrl }}('{{ $('Find Company Contact').first().json.customerNumber }}')",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Match",
+              "value": "*"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ Primary_Contact_No: $json.contactNumber }) }}",
+        "options": {}
+      },
+      "id": "b79a10ce-da53-53b8-b365-9fe398dac798",
+      "name": "Set Primary Contact On Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6096,
+        1312
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Sets Primary Contact No. so BC shows the contact as \"ERC Primary Contact Name\"."
     }
   ],
   "pinData": {},
@@ -930,6 +1227,119 @@
         [
           {
             "node": "Customer Ready (New)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write BC Order Number To Deal": {
+      "main": [
+        [
+          {
+            "node": "Contact Has A Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Has A Name": {
+      "main": [
+        [
+          {
+            "node": "Get BC Customer Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Primary Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get BC Customer Contacts": {
+      "main": [
+        [
+          {
+            "node": "Find Company Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Company Contact": {
+      "main": [
+        [
+          {
+            "node": "Find Existing Person Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing Person Contact": {
+      "main": [
+        [
+          {
+            "node": "Person Contact Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Person Contact Exists": {
+      "main": [
+        [
+          {
+            "node": "Contact Ready (Existing)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create BC Person Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Ready (Existing)": {
+      "main": [
+        [
+          {
+            "node": "Set Primary Contact On Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create BC Person Contact": {
+      "main": [
+        [
+          {
+            "node": "Contact Ready (New)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Ready (New)": {
+      "main": [
+        [
+          {
+            "node": "Set Primary Contact On Customer",
             "type": "main",
             "index": 0
           }

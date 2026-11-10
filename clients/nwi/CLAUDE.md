@@ -30,7 +30,7 @@ Recorded 2026-11-09. No export from this instance exists yet.
 ## Decisions
 - HubSpot -> n8n uses the native Webhooks API (HubSpot developer app), not Data Hub.
 - Trigger: HubSpot webhook (developer platform project `nwi-bc-sync`, account nwi-group 443450748). Subscription property is set in the project's `webhooks-hsmeta.json`.
-- Customers are created via the BC OData `Customer_Card` web service (API create fails on the template's `GST 10%`). New customers get Gen/VAT(GST)/Customer posting group `DOMESTIC`. Updates and orders use the standard API.
+- Customers are created via the BC OData `Customer_Card` web service (API create fails on the template's `GST 10%`). New customers get Gen/VAT(GST)/Customer posting group `DOMESTIC`. Existing customers are also updated through the OData page (Segment / Responsibility_Center are page-only). Lookups and sales orders use the standard API. The primary contact is a BC Person contact under the customer's company contact, set via `Primary_Contact_No` (ERC Primary Contact Name is read-only).
 - One HubSpot contact = one BC customer. Contact property `business_central_record_id` holds the BC customer number. BC customer name = contact `company` property.
 - Match on SKU: HubSpot line item `hs_sku` = BC item `number`.
 - HubSpot properties: contact `business_central_record_id` (BC customer number), deal `bc_order_id` (BC sales order number).
