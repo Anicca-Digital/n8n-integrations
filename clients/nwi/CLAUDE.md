@@ -9,7 +9,7 @@ Read this before editing anything in `clients/nwi/`. Full detail is in `README.m
 
 ## Folders
 - `workflows/`: workflow JSON, one workflow per file.
-- `code-nodes/`: Code node JS extracted from the workflows.
+- No `code-nodes/` folder: the workflow has no Code nodes (settings in the Workflow Config Edit Fields node, request bodies inline in the HTTP nodes). If a Code node is ever added, extract its JS to `code-nodes/`.
 
 ## Instance facts
 Read these before building or editing. An export in this folder always wins over a recorded value here. Do not copy facts to or from other clients.
