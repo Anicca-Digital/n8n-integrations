@@ -37,13 +37,21 @@ Read these before building or editing. An export in this folder always wins over
 
 | Fact | Value |
 |---|---|
-| n8n version | UNKNOWN (ask) |
-| Cloud or self-hosted | UNKNOWN (ask) |
+| n8n version | 2.45.5 (from the n8n v3 migration report, synced 2026-11-11). Upgrade to v3 pending |
+| Cloud or self-hosted | Probably Cloud: a pasted test payload in the Simpro -> HubSpot Real Time export shows host `spls.app.n8n.cloud`. Not confirmed, ask |
 | Error handler workflow ID | UNKNOWN (ask). No existing workflow sets `settings.errorWorkflow` |
 | Credential names (exact spelling) | `SPL Account` (HubSpot app token, `hubspotAppToken`), `SPL Simpro` (OAuth2) |
 | Consultant access level | UNKNOWN (ask) |
 
-Confirmed on 2026-11-09 from the workflow exports in `clients/spl-simpro/workflows/` (credential names and errorWorkflow state only). Resolved IDs go in `BUILD_RECORDS.md`.
+Credential names and errorWorkflow state confirmed on 2026-11-09 from the workflow exports in `clients/spl-simpro/workflows/`. Version and hosting updated 2026-11-11 (see above). Resolved IDs go in `BUILD_RECORDS.md`.
 
 ## Known validator findings (2026-11-09)
 `python3 shared/tools/validate_workflow.py` reports 12 ERRORs on the existing exports: 10 sub-workflow triggers missing `inputSource: "passthrough"`, and no authentication on the `/simpro-upsert` and `/hubsput-upsert` webhooks. Do not fix these as a side effect of another change; raise them first.
+
+## n8n v3 readiness (2026-11-11)
+Migration report `migration-report-v3-2026-11-11.csv` (instance 2.45.5): 25 workflows scanned, 0 affected. Four instance-level rules, checked against the exports:
+- Compression node limits lowered: not used (no Compression or binary handling). No risk.
+- SSRF blocks more IP ranges: not affected. All 116 HTTP Request nodes call public hosts only (`api.hubapi.com`, `spl.simprosuite.com`). Keep it that way; do not add private-IP or localhost URLs.
+- Task runner timeout default 1 minute: low risk. 24 Code nodes, all small data-shaping JS with bounded loops and no network calls. Watch `Build Record List` in both Scheduled Updates workflows after upgrade if a run follows a long gap.
+- Workflow import from URL removed: import by JSON file only (see README).
+Not checked: workflow-level v3 changes (the CSV lists none). Open: confirm Cloud vs self-hosted and the upgrade date with the client.

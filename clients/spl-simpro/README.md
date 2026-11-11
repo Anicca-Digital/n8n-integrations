@@ -35,3 +35,9 @@ clients/spl-simpro/
 ## Importing
 
 In n8n: **Workflows → Import from File**, then re-link the credentials (`SPL Simpro` OAuth2, `SPL Account` HubSpot app token). Sub-workflow references use n8n workflow IDs, so re-select them if you import into a different instance.
+
+n8n v3 removes import from URL, so always import from a JSON file.
+
+## n8n v3 readiness
+
+Checked 2026-11-11 against the v3 migration report (instance on 2.45.5): 0 of 25 workflows affected, and none of the four instance rules apply to these exports (no Compression nodes, only public HTTP hosts, small Code nodes, no URL import). Details and open items are in `CLAUDE.md`.
