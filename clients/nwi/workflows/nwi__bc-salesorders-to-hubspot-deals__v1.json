@@ -1,0 +1,482 @@
+{
+  "name": "[NWI] BC Sales Orders -> HubSpot Deals (daily)",
+  "nodes": [
+    {
+      "name": "Setup Checklist",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        -760
+      ],
+      "parameters": {
+        "content": "## NWI - BC Sales Orders -> HubSpot Deals (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (deals read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning remains on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file).\n3. Settings -> Timezone is Australia/Sydney, so *Every Day At Midnight* means midnight Sydney. Check it.\n4. BC web service **SalesOrder** (page 42) must stay published. Standard API `salesOrders` is used to find changed orders.\n5. HubSpot dropdowns `print_option`, `fob_option`, `product_category` must hold the same text as BC. A BC value HubSpot does not accept fails that batch (the error handler alerts; the run is safe to repeat).\n6. **Workflow Config** holds: lookback window (25h, one hour of overlap), batch size, and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC sales orders created or changed in the last 25 hours, reads them in batches, finds the matching deals by `bc_order_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. Deals are never created.\n**Safe to re-run:** it only writes values that differ.\n**API calls for N changed orders:** 1 BC list + N/50 BC reads + N/50 HubSpot searches + changed deals/100 HubSpot updates.",
+        "width": 760,
+        "height": 520,
+        "color": 5
+      },
+      "id": "6e11220f-5c69-5b02-8b34-9b1b47679ee8"
+    },
+    {
+      "name": "Section - Find changed orders",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        -140
+      ],
+      "parameters": {
+        "content": "## 1. Find changed BC orders\nOne call lists every order created or modified in the lookback window.",
+        "width": 1010,
+        "height": 400,
+        "color": 7
+      },
+      "id": "47e516f6-73e2-5ae0-aa14-f02d769faea9"
+    },
+    {
+      "name": "Section - Read and match",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        780,
+        -140
+      ],
+      "parameters": {
+        "content": "## 2. Read details + find deals\nBatches of orders: BC details in one call, matching deals in one HubSpot search.",
+        "width": 1010,
+        "height": 400,
+        "color": 4
+      },
+      "id": "cf751467-8cef-56c9-9fbf-9747effd485f"
+    },
+    {
+      "name": "Section - Update",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1810,
+        -140
+      ],
+      "parameters": {
+        "content": "## 3. Write only what changed\nCompares BC to HubSpot and updates up to 100 deals per call.",
+        "width": 560,
+        "height": 400,
+        "color": 6
+      },
+      "id": "829a442e-0468-50ba-b7cf-7d9a27559bdd"
+    },
+    {
+      "name": "Every Day At Midnight",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 0
+            }
+          ]
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Runs once a day at midnight (workflow timezone: Australia/Sydney). Production runs only - publish the workflow.",
+      "id": "cbd001b0-997c-54e2-9cde-253cac9046e4"
+    },
+    {
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bba94cd9-5743-569c-9e58-2ebd59d0df27",
+              "name": "bcBase",
+              "value": "https://api.businesscentral.dynamics.com/v2.0/0dc6b780-5b9e-4809-afb6-6bc499280f23/Production",
+              "type": "string"
+            },
+            {
+              "id": "eb4930a9-2dff-5d69-8c3e-60d6489de855",
+              "name": "bcCompanyId",
+              "value": "4b4f1461-9f6d-ea11-a813-000d3acaa8ce",
+              "type": "string"
+            },
+            {
+              "id": "bfeb9932-2cba-518a-95e8-96e0c018540d",
+              "name": "bcCompanyName",
+              "value": "National Weighing & Instrument",
+              "type": "string"
+            },
+            {
+              "id": "06d24516-85b3-588a-9a2a-bb06ea673a8a",
+              "name": "lookbackHours",
+              "value": "25",
+              "type": "number"
+            },
+            {
+              "id": "05028c6f-9106-56ba-86ff-46b54b3a2a44",
+              "name": "batchSize",
+              "value": "50",
+              "type": "number"
+            },
+            {
+              "id": "4f711e06-d127-5293-8e13-3aa773fa2a38",
+              "name": "fieldMap",
+              "value": "{\n  \"Order_Date\": \"order_date\",\n  \"Posting_Date\": \"posting_date\",\n  \"Requested_Delivery_Date\": \"requested_delivery_date\",\n  \"Document_Date\": \"document_date\",\n  \"Due_Date\": \"due_date\",\n  \"ERC_Print_Option\": \"print_option\",\n  \"ERC_FOB_Option\": \"fob_option\",\n  \"Product_Category\": \"product_category\",\n  \"WorkDescription\": \"description\",\n  \"Job_Description\": \"job_description\"\n}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "lookbackHours: how far back to look for changed orders (25 = daily run + 1h overlap). batchSize: orders per BC read / HubSpot search. fieldMap: BC sales order page field -> HubSpot deal property.",
+      "id": "41eac3a4-b616-513c-bac4-c542a3ad3296"
+    },
+    {
+      "name": "List Changed BC Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/salesOrders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ \"lastModifiedDateTime ge \" + $now.minus({ hours: Number($('Workflow Config').first().json.lookbackHours) }).toUTC().toISO() }}"
+            },
+            {
+              "name": "$select",
+              "value": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "One call: every sales order created or modified in the window (created in n8n or directly in BC).",
+      "id": "4bd7000a-8406-56ae-869d-c8aaeee54b1a"
+    },
+    {
+      "name": "Any Changed Orders",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "150ebce2-479f-5762-9dbc-a774ec01fb50",
+              "leftValue": "={{ String($json.value.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "90958ac0-7fa2-58be-bf44-8b62693b1fe2"
+    },
+    {
+      "name": "No Changes To Sync",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        448,
+        200
+      ],
+      "parameters": {},
+      "id": "9f359618-179a-5fa6-9633-e8af241e471e"
+    },
+    {
+      "name": "Build BC Read Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Splits the changed BC order numbers into batches so each BC read and each HubSpot search\n// covers many orders in one call. Batch size comes from Workflow Config (batchSize).\nconst size = Number($('Workflow Config').first().json.batchSize) || 50;\nconst numbers = ($input.first().json.value || []).map((o) => o.number);\nconst batches = [];\nfor (let i = 0; i < numbers.length; i += size) {\n  const chunk = numbers.slice(i, i + size);\n  batches.push({ json: {\n    numbers: chunk,\n    filter: `Document_Type eq 'Order' and (${chunk.map((n) => `No eq '${n}'`).join(' or ')})`,\n  } });\n}\nreturn batches;"
+      },
+      "notesInFlow": true,
+      "notes": "Splits the order numbers into batches (batchSize each). One item per batch.",
+      "id": "a82b5744-9ce8-5bad-85d8-7c6d3bc1358f"
+    },
+    {
+      "name": "Read BC Order Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/SalesOrder",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ $json.filter }}"
+            },
+            {
+              "name": "$select",
+              "value": "No,Order_Date,Posting_Date,Requested_Delivery_Date,Document_Date,Due_Date,ERC_Print_Option,ERC_FOB_Option,Product_Category,WorkDescription,Job_Description"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "One call per batch: all the fields we sync, for up to batchSize orders.",
+      "id": "f7e35a34-b728-5302-a217-36c938f8e6ea"
+    },
+    {
+      "name": "Find Matching Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/deals/search",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [{ \"propertyName\": \"bc_order_id\", \"operator\": \"IN\", \"values\": $('Build BC Read Batches').item.json.numbers }] }],\n  \"properties\": [\"bc_order_id\", ...Object.keys($('Workflow Config').first().json.fieldMap).map((k) => $('Workflow Config').first().json.fieldMap[k])],\n  \"limit\": 100\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Read-only search (POST is only the HubSpot search convention): one call finds the deals for a whole batch of orders.",
+      "id": "183ebf71-6c13-566f-86c7-8dec6c8169f7"
+    },
+    {
+      "name": "Compare And Build Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Joins BC order details with the matching HubSpot deals (by bc_order_id) and keeps ONLY the\n// properties whose value differs. BC wins; a blank BC value never overwrites a HubSpot value.\n// Output: one item per HubSpot batch-update call (up to 100 deals each). No changes = no items.\nconst cfg = $('Workflow Config').first().json;\nconst map = typeof cfg.fieldMap === 'string' ? JSON.parse(cfg.fieldMap) : cfg.fieldMap; // BC page field -> HubSpot property\n\n// BC sends 0001-01-01 for an empty date and 0 for an empty option: both count as blank.\nconst norm = (bcField, v) => {\n  if (v === null || v === undefined) return '';\n  let s = String(v).replace(/\\r\\n/g, '\\n').trim();\n  if (s === '0' || s === '0001-01-01') return '';\n  if (/Date$/.test(bcField)) s = s.slice(0, 10);\n  return s;\n};\n\nconst orders = {};\nfor (const item of $('Read BC Order Details').all()) {\n  for (const o of item.json.value || []) orders[String(o.No)] = o;\n}\n\nconst inputs = [];\nfor (const item of $input.all()) {\n  for (const deal of item.json.results || []) {\n    const order = orders[String(deal.properties.bc_order_id || '').trim()];\n    if (!order) continue;\n    const properties = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const bcValue = norm(bcField, order[bcField]);\n      if (!bcValue) continue;                                   // blank in BC: leave the deal alone\n      if (bcValue !== norm(bcField, deal.properties[hsProp])) properties[hsProp] = bcValue;\n    }\n    if (Object.keys(properties).length) inputs.push({ id: deal.id, properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < inputs.length; i += 100) {\n  out.push({ json: { inputs: inputs.slice(i, i + 100) } });\n}\nreturn out;"
+      },
+      "notesInFlow": true,
+      "notes": "Keeps only properties that differ. Blank BC values are ignored. No changes = no output, so the next node does not run.",
+      "id": "b6db794b-1637-5eb1-97a8-348f88c53a83"
+    },
+    {
+      "name": "Update HubSpot Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2144,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/deals/batch/update",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"inputs\": $json.inputs\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Batch update, up to 100 deals per call. Updates only: deals are never created. Setting the same value twice is harmless, so retry is safe.",
+      "id": "08296d5a-25c3-503a-b2e8-b40c29b29502"
+    }
+  ],
+  "connections": {
+    "Every Day At Midnight": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "List Changed BC Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Changed BC Orders": {
+      "main": [
+        [
+          {
+            "node": "Any Changed Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Changed Orders": {
+      "main": [
+        [
+          {
+            "node": "Build BC Read Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Changes To Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build BC Read Batches": {
+      "main": [
+        [
+          {
+            "node": "Read BC Order Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Order Details": {
+      "main": [
+        [
+          {
+            "node": "Find Matching Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Matching Deals": {
+      "main": [
+        [
+          {
+            "node": "Compare And Build Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare And Build Updates": {
+      "main": [
+        [
+          {
+            "node": "Update HubSpot Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney"
+  },
+  "pinData": {}
+}
