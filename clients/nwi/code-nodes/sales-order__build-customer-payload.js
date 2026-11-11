@@ -52,6 +52,7 @@ const pageFields = {
   Segment: cut(c.segment, 30),
   Responsibility_Center: cut(c.responsibility_center, 10),
   Location_Code: cut(c.location_code, 10),
+  ABN: cut(c.abn, 30),
 };
 // New customer: posting groups first. Existing customer: never touch their posting groups.
 const odataPayload = nonBlank({ ...cfg.bc.newCustomerDefaults, ...pageFields });
