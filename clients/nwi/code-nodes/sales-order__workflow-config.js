@@ -22,7 +22,7 @@ return [{ json: {
       { property: 'hs_is_closed_won', value: 'true' },
       { property: 'closed_won', value: 'true' },
     ],
-    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won',
+    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won,description,job_description,document_date,posting_date,order_date,due_date,requested_delivery_date,print_option,fob_option,product_category',
     contactProperties: 'firstname,lastname,company,email,phone,mobilephone,address,city,state,zip,country,website,business_central_record_id,segment,responsibility_center',
     lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],
   },
