@@ -24,7 +24,6 @@ return [{ json: {
   customerNumber: cust.customerNumber,
   salesOrderPayload: {
     customerNumber: cust.customerNumber,
-    externalDocumentNumber: dealId,   // HubSpot deal ID: traceability + duplicate guard
     ...datePart,
     salesOrderLines: lines,
   },

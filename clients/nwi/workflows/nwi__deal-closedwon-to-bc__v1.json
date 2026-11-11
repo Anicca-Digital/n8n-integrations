@@ -78,7 +78,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        560,
+        784,
         1312
       ],
       "retryOnFail": true,
@@ -103,7 +103,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        784,
+        1008,
         1312
       ],
       "retryOnFail": true,
@@ -125,7 +125,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        992,
+        1216,
         1312
       ]
     },
@@ -150,7 +150,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1216,
+        1440,
         1312
       ],
       "retryOnFail": true,
@@ -172,7 +172,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1440,
+        1664,
         1312
       ]
     },
@@ -192,7 +192,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1664,
+        1888,
         1312
       ],
       "retryOnFail": true,
@@ -216,7 +216,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1888,
+        2112,
         1312
       ],
       "notesInFlow": true,
@@ -253,7 +253,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2112,
+        2336,
         1312
       ]
     },
@@ -291,7 +291,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2320,
+        2544,
         1216
       ],
       "retryOnFail": true,
@@ -312,7 +312,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2544,
+        2768,
         1216
       ]
     },
@@ -345,7 +345,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2768,
+        2992,
         1216
       ],
       "retryOnFail": true,
@@ -368,7 +368,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2992,
+        3216,
         1216
       ]
     },
@@ -397,7 +397,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2320,
+        2544,
         1440
       ],
       "notesInFlow": true,
@@ -424,7 +424,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2544,
+        2768,
         1440
       ],
       "retryOnFail": true,
@@ -448,117 +448,21 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2768,
+        2992,
         1440
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Input is the customer ({ customerNumber }), from either branch. The order is created by customer number.\nconst cust = $input.first().json;\nconst dealId = $('Pick Associated Records').first().json.dealId;\nconst lines = $('Validate Order Lines').first().json.lines;\nconst d = $('Get Deal').first().json.properties || {};\n\n// HubSpot date properties come back as YYYY-MM-DD (or epoch ms). BC wants YYYY-MM-DD. Blank = not sent, BC defaults apply.\nconst toDate = (v) => {\n  const s = String(v === undefined || v === null ? '' : v).trim();\n  if (!s) return undefined;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  if (/^\\d{10,}$/.test(s)) return new Date(Number(s)).toISOString().slice(0, 10);\n  return undefined;\n};\nconst dates = {\n  orderDate: toDate(d.order_date),\n  postingDate: toDate(d.posting_date),\n  requestedDeliveryDate: toDate(d.requested_delivery_date),\n};\nconst datePart = Object.fromEntries(Object.entries(dates).filter(([, v]) => v !== undefined));\n\nreturn [{ json: {\n  dealId,\n  customerNumber: cust.customerNumber,\n  salesOrderPayload: {\n    customerNumber: cust.customerNumber,\n    externalDocumentNumber: dealId,   // HubSpot deal ID: traceability + duplicate guard\n    ...datePart,\n    salesOrderLines: lines,\n  },\n} }];\n"
+        "jsCode": "// Input is the customer ({ customerNumber }), from either branch. The order is created by customer number.\nconst cust = $input.first().json;\nconst dealId = $('Pick Associated Records').first().json.dealId;\nconst lines = $('Validate Order Lines').first().json.lines;\nconst d = $('Get Deal').first().json.properties || {};\n\n// HubSpot date properties come back as YYYY-MM-DD (or epoch ms). BC wants YYYY-MM-DD. Blank = not sent, BC defaults apply.\nconst toDate = (v) => {\n  const s = String(v === undefined || v === null ? '' : v).trim();\n  if (!s) return undefined;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  if (/^\\d{10,}$/.test(s)) return new Date(Number(s)).toISOString().slice(0, 10);\n  return undefined;\n};\nconst dates = {\n  orderDate: toDate(d.order_date),\n  postingDate: toDate(d.posting_date),\n  requestedDeliveryDate: toDate(d.requested_delivery_date),\n};\nconst datePart = Object.fromEntries(Object.entries(dates).filter(([, v]) => v !== undefined));\n\nreturn [{ json: {\n  dealId,\n  customerNumber: cust.customerNumber,\n  salesOrderPayload: {\n    customerNumber: cust.customerNumber,\n    ...datePart,\n    salesOrderLines: lines,\n  },\n} }];\n"
       },
       "id": "dba65576-134a-4986-8bce-f54889a672a5",
       "name": "Build Sales Order Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3200,
-        1312
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $('Workflow Config').first().json.bc.apiRoot }}/salesOrders",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "$filter",
-              "value": "={{ \"externalDocumentNumber eq '\" + $json.dealId + \"'\" }}"
-            },
-            {
-              "name": "$select",
-              "value": "id,number"
-            }
-          ]
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "4bbc8802-8fe3-4697-a37e-dd6f00adc605",
-      "name": "Find Existing BC Sales Order",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
         3424,
         1312
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "oAuth2Api": {
-          "name": "Business Central – NWI Group (client credentials)"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "538d8703-e0b1-5f2d-a10d-bcdaba4738a0",
-              "leftValue": "={{ String(($('Find Existing BC Sales Order').first().json.value || []).length > 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "9feb7995-9a49-4a35-a74c-e66990facadd",
-      "name": "Sales Order Already Exists For Deal",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        3648,
-        1312
-      ],
-      "notesInFlow": true,
-      "notes": "Re-run safety: a deal never gets a second order."
-    },
-    {
-      "parameters": {
-        "jsCode": "// An order for this deal already exists in BC (e.g. an earlier run failed at the write-back).\nconst existing = ($input.first().json.value || [])[0];\nreturn [{ json: { orderNumber: existing.number } }];\n"
-      },
-      "id": "5775229e-f3b2-4366-a2b6-9d50f8e77092",
-      "name": "Order Ready (Existing)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3872,
-        1216
       ]
     },
     {
@@ -586,11 +490,11 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3872,
+        4096,
         1440
       ],
       "notesInFlow": true,
-      "notes": "Single call (header + lines). Create call: no retry, by design.",
+      "notes": "Single call (header + lines). Purchase order No. is left blank. Create call: no retry, by design.",
       "credentials": {
         "oAuth2Api": {
           "name": "Business Central – NWI Group (client credentials)"
@@ -606,7 +510,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4080,
+        4304,
         1440
       ]
     },
@@ -626,7 +530,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4304,
+        4528,
         1312
       ],
       "retryOnFail": true,
@@ -641,7 +545,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_record_id` and deal `bc_order_id` (both single-line text). \n6. BC web service **Customer_Card** (page 21) must stay published: new customers are created through it. Fix the customer templates' GST group in BC if you want to return to the standard API.\n7. Primary contact: after the order, the HubSpot contact is created as a BC Person contact under the customer's company contact and set as Primary Contact No. (shows as ERC Primary Contact Name). This runs after the order is created, so a failure here never blocks the order.\n8. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Re-run safe:** deal with bc_order_id set is skipped; BC order is looked up by deal ID before creating.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_record_id` and deal `bc_order_id` (both single-line text). \n6. BC web service **Customer_Card** (page 21) must stay published: new customers are created through it. Fix the customer templates' GST group in BC if you want to return to the standard API.\n7. Primary contact: after the order, the HubSpot contact is created as a BC Person contact under the customer's company contact and set as Primary Contact No. (shows as ERC Primary Contact Name). This runs after the order is created, so a failure here never blocks the order.\n8. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Duplicate guard:** a deal that already has bc_order_id is skipped. The BC order's Purchase order No. is left blank, so BC has no copy of the deal ID: if the order is created but the write-back to the deal fails, fix bc_order_id by hand before re-running.",
         "height": 240,
         "width": 700,
         "color": 5
@@ -686,7 +590,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4528,
+        4752,
         1312
       ],
       "notesInFlow": true,
@@ -699,7 +603,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        4752,
+        4976,
         1512
       ]
     },
@@ -738,7 +642,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4752,
+        4976,
         1312
       ],
       "credentials": {
@@ -759,7 +663,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4976,
+        5200,
         1312
       ]
     },
@@ -798,7 +702,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5200,
+        5424,
         1312
       ],
       "credentials": {
@@ -841,7 +745,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5424,
+        5648,
         1312
       ],
       "notesInFlow": true,
@@ -856,7 +760,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5648,
+        5872,
         1212
       ]
     },
@@ -885,7 +789,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5648,
+        5872,
         1432
       ],
       "credentials": {
@@ -905,7 +809,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5872,
+        6096,
         1432
       ]
     },
@@ -938,7 +842,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        6096,
+        6320,
         1312
       ],
       "credentials": {
@@ -951,6 +855,54 @@
       "waitBetweenTries": 3000,
       "notesInFlow": true,
       "notes": "Sets Primary Contact No. so BC shows the contact as \"ERC Primary Contact Name\"."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5f7ea53c-9167-5ab2-910b-9300ac267b6f",
+              "leftValue": "={{ String(!String($('Get Deal').first().json.properties.bc_order_id || '').trim()) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "27a68c4f-ac9c-5999-ac93-1c6f2b96f0b3",
+      "name": "Deal Has No BC Order",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        1312
+      ],
+      "notesInFlow": true,
+      "notes": "Duplicate guard: a deal that already has bc_order_id is skipped."
+    },
+    {
+      "parameters": {},
+      "id": "4a9f5749-4274-5a85-8587-20e3c358ce5c",
+      "name": "Skip Deal",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        240,
+        1512
+      ]
     }
   ],
   "pinData": {},
@@ -981,7 +933,7 @@
       "main": [
         [
           {
-            "node": "Get Deal Contact Associations",
+            "node": "Deal Has No BC Order",
             "type": "main",
             "index": 0
           }
@@ -1135,47 +1087,7 @@
       "main": [
         [
           {
-            "node": "Find Existing BC Sales Order",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Existing BC Sales Order": {
-      "main": [
-        [
-          {
-            "node": "Sales Order Already Exists For Deal",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sales Order Already Exists For Deal": {
-      "main": [
-        [
-          {
-            "node": "Order Ready (Existing)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
             "node": "Create BC Sales Order",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Order Ready (Existing)": {
-      "main": [
-        [
-          {
-            "node": "Write BC Order Number To Deal",
             "type": "main",
             "index": 0
           }
@@ -1340,6 +1252,24 @@
         [
           {
             "node": "Set Primary Contact On Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deal Has No BC Order": {
+      "main": [
+        [
+          {
+            "node": "Get Deal Contact Associations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Deal",
             "type": "main",
             "index": 0
           }
