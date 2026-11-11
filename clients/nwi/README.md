@@ -20,3 +20,6 @@ The standard API create fails with "GST Bus. Posting Group ... (GST 10%) cannot 
 
 ## Primary contact
 Runs after the order number is written to the deal, so a failure here never blocks the order. It looks up the customer's company contact, reuses a Person contact under it that matches the HubSpot contact's email (or name when there is no email), otherwise creates one, then sets `Primary_Contact_No` on the customer card. Skipped when the HubSpot contact has no first or last name. Segment and Responsibility_Center must be valid BC codes.
+
+## Sales order fields
+The order is created through the standard API (header + lines, with Order / Posting / Requested Delivery dates from the deal). After the order number is written to the deal's `bc_order_id`, the Sales Order page (web service `SalesOrder`, page 42) sets the rest: Document_Date (`document_date`), Due_Date (`due_date`), ERC_Print_Option (`print_option`), ERC_FOB_Option (`fob_option`), Product_Category (`product_category`), WorkDescription (`description`) and Job_Description (`job_description`). Blank values are not sent. The order's Purchase order No. (External_Document_No) is left blank. Keep the `SalesOrder` web service published.

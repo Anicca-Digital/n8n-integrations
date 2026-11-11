@@ -12,6 +12,8 @@ bc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(
 bc.companyName = 'National Weighing & Instrument';
 bc.customerCardUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/ODataV4/Company('${encodeURIComponent(bc.companyName)}')/Customer_Card`;
 // Same values as existing customers (e.g. CM007815). Sent first so BC does not apply the template's bad GST group.
+// Sales Order page (web service SalesOrder, page 42): fields the standard API does not have.
+bc.salesOrderPageUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/ODataV4/Company('${encodeURIComponent(bc.companyName)}')/SalesOrder`;
 bc.newCustomerDefaults = { Gen_Bus_Posting_Group: 'DOMESTIC', VAT_Bus_Posting_Group: 'DOMESTIC', Customer_Posting_Group: 'DOMESTIC' };
 return [{ json: {
   hubspot: {

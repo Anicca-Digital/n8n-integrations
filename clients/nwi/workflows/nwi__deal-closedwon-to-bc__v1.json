@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyId: '4b4f1461-9f6d-ea11-a813-000d3acaa8ce', // National Weighing & Instrument (from GET .../api/v2.0/companies)\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\n// New customers are CREATED through the OData Customer_Card page (web service published in BC).\n// The standard API create fails: BC applies the customer template's GST 10% default, which does not exist.\n// Updates, lookups and sales orders still use the standard API.\nbc.companyName = 'National Weighing & Instrument';\nbc.customerCardUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/ODataV4/Company('${encodeURIComponent(bc.companyName)}')/Customer_Card`;\n// Same values as existing customers (e.g. CM007815). Sent first so BC does not apply the template's bad GST group.\nbc.newCustomerDefaults = { Gen_Bus_Posting_Group: 'DOMESTIC', VAT_Bus_Posting_Group: 'DOMESTIC', Customer_Posting_Group: 'DOMESTIC' };\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    // Any ONE of these starts the sync. Subscribe the HubSpot webhook to whichever property you use.\n    triggers: [\n      { property: 'dealstage', value: 'closedwon' },\n      { property: 'hs_is_closed_won', value: 'true' },\n      { property: 'closed_won', value: 'true' },\n    ],\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won,description,job_description,document_date,posting_date,order_date,due_date,requested_delivery_date,print_option,fob_option,product_category',\n    contactProperties: 'firstname,lastname,company,email,phone,mobilephone,address,city,state,zip,country,website,business_central_record_id,segment,responsibility_center,location_code',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
+        "jsCode": "// Environment-specific values live here and nowhere else.\nconst bc = {\n  baseUrl: 'https://api.businesscentral.dynamics.com/v2.0',\n  tenantId: '0dc6b780-5b9e-4809-afb6-6bc499280f23',\n  environment: 'Production',\n  companyId: '4b4f1461-9f6d-ea11-a813-000d3acaa8ce', // National Weighing & Instrument (from GET .../api/v2.0/companies)\n};\nbc.apiRoot = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/api/v2.0/companies(${bc.companyId})`;\n// New customers are CREATED through the OData Customer_Card page (web service published in BC).\n// The standard API create fails: BC applies the customer template's GST 10% default, which does not exist.\n// Updates, lookups and sales orders still use the standard API.\nbc.companyName = 'National Weighing & Instrument';\nbc.customerCardUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/ODataV4/Company('${encodeURIComponent(bc.companyName)}')/Customer_Card`;\n// Same values as existing customers (e.g. CM007815). Sent first so BC does not apply the template's bad GST group.\n// Sales Order page (web service SalesOrder, page 42): fields the standard API does not have.\nbc.salesOrderPageUrl = `${bc.baseUrl}/${bc.tenantId}/${bc.environment}/ODataV4/Company('${encodeURIComponent(bc.companyName)}')/SalesOrder`;\nbc.newCustomerDefaults = { Gen_Bus_Posting_Group: 'DOMESTIC', VAT_Bus_Posting_Group: 'DOMESTIC', Customer_Posting_Group: 'DOMESTIC' };\nreturn [{ json: {\n  hubspot: {\n    pipelineId: 'default',\n    // Any ONE of these starts the sync. Subscribe the HubSpot webhook to whichever property you use.\n    triggers: [\n      { property: 'dealstage', value: 'closedwon' },\n      { property: 'hs_is_closed_won', value: 'true' },\n      { property: 'closed_won', value: 'true' },\n    ],\n    dealProperties: 'dealname,pipeline,dealstage,amount,bc_order_id,hs_is_closed_won,closed_won,description,job_description,document_date,posting_date,order_date,due_date,requested_delivery_date,print_option,fob_option,product_category',\n    contactProperties: 'firstname,lastname,company,email,phone,mobilephone,address,city,state,zip,country,website,business_central_record_id,segment,responsibility_center,location_code',\n    lineItemProperties: ['name', 'hs_sku', 'quantity', 'price'],\n  },\n  bc,\n  // HubSpot country text -> BC country/region code (2-letter codes pass through as-is).\n  countryMap: { 'australia': 'AU', 'new zealand': 'NZ', 'united states': 'US', 'united kingdom': 'GB', 'singapore': 'SG' },\n} }];\n"
       },
       "id": "4ceea568-0f0a-437a-927f-2c8ad55d3063",
       "name": "Workflow Config",
@@ -454,7 +454,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Input is the customer ({ customerNumber }), from either branch. The order is created by customer number.\nconst cust = $input.first().json;\nconst dealId = $('Pick Associated Records').first().json.dealId;\nconst lines = $('Validate Order Lines').first().json.lines;\nconst d = $('Get Deal').first().json.properties || {};\n\n// HubSpot date properties come back as YYYY-MM-DD (or epoch ms). BC wants YYYY-MM-DD. Blank = not sent, BC defaults apply.\nconst toDate = (v) => {\n  const s = String(v === undefined || v === null ? '' : v).trim();\n  if (!s) return undefined;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  if (/^\\d{10,}$/.test(s)) return new Date(Number(s)).toISOString().slice(0, 10);\n  return undefined;\n};\nconst dates = {\n  orderDate: toDate(d.order_date),\n  postingDate: toDate(d.posting_date),\n  requestedDeliveryDate: toDate(d.requested_delivery_date),\n};\nconst datePart = Object.fromEntries(Object.entries(dates).filter(([, v]) => v !== undefined));\n\nreturn [{ json: {\n  dealId,\n  customerNumber: cust.customerNumber,\n  salesOrderPayload: {\n    customerNumber: cust.customerNumber,\n    ...datePart,\n    salesOrderLines: lines,\n  },\n} }];\n"
+        "jsCode": "// Input is the customer ({ customerNumber }), from either branch. The order is created by customer number.\nconst cust = $input.first().json;\nconst dealId = $('Pick Associated Records').first().json.dealId;\nconst lines = $('Validate Order Lines').first().json.lines;\nconst d = $('Get Deal').first().json.properties || {};\n\n// HubSpot date properties come back as YYYY-MM-DD (or epoch ms). BC wants YYYY-MM-DD. Blank = not sent, BC defaults apply.\nconst toDate = (v) => {\n  const s = String(v === undefined || v === null ? '' : v).trim();\n  if (!s) return undefined;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  if (/^\\d{10,}$/.test(s)) return new Date(Number(s)).toISOString().slice(0, 10);\n  return undefined;\n};\nconst dates = {\n  orderDate: toDate(d.order_date),\n  postingDate: toDate(d.posting_date),\n  requestedDeliveryDate: toDate(d.requested_delivery_date),\n};\nconst datePart = Object.fromEntries(Object.entries(dates).filter(([, v]) => v !== undefined));\n\n// Fields written through the Sales Order page after the order exists (page field names). Blank = not sent.\nconst t = (v) => (v === undefined || v === null ? undefined : String(v).trim());\nconst orderPageFields = Object.fromEntries(Object.entries({\n  Document_Date: toDate(d.document_date),   // before Due_Date: BC recalculates the due date from the document date\n  Due_Date: toDate(d.due_date),\n  ERC_Print_Option: t(d.print_option),\n  ERC_FOB_Option: t(d.fob_option),\n  Product_Category: t(d.product_category),\n  WorkDescription: t(d.description),\n  Job_Description: t(d.job_description) === undefined ? undefined : t(d.job_description).slice(0, 100),\n}).filter(([, v]) => v !== undefined && v !== ''));\n\nreturn [{ json: {\n  dealId,\n  orderPageFields,\n  customerNumber: cust.customerNumber,\n  salesOrderPayload: {\n    customerNumber: cust.customerNumber,\n    ...datePart,\n    salesOrderLines: lines,\n  },\n} }];\n"
       },
       "id": "dba65576-134a-4986-8bce-f54889a672a5",
       "name": "Build Sales Order Payload",
@@ -545,7 +545,7 @@
     },
     {
       "parameters": {
-        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_record_id` and deal `bc_order_id` (both single-line text). \n6. BC web service **Customer_Card** (page 21) must stay published: new customers are created through it. Fix the customer templates' GST group in BC if you want to return to the standard API.\n7. Primary contact: after the order, the HubSpot contact is created as a BC Person contact under the customer's company contact and set as Primary Contact No. (shows as ERC Primary Contact Name). This runs after the order is created, so a failure here never blocks the order.\n8. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Duplicate guard:** a deal that already has bc_order_id is skipped. The BC order's Purchase order No. is left blank, so BC has no copy of the deal ID: if the order is created but the write-back to the deal fails, fix bc_order_id by hand before re-running.",
+        "content": "## NWI - Deal -> BC Customer + Sales Order: set up before publishing\n1. Webhook node: connect header-auth credential **NWI HubSpot Webhook Auth** (see the HubSpot header note in the PR). Publish, then point the HubSpot webhook subscription (Deal property `dealstage`) at the PRODUCTION URL.\n2. Connect credentials: **NWI HubSpot App Token** (HubSpot app token, scopes: crm.objects.deals.read/write, contacts.read/write, line_items read) and **Business Central – NWI Group (client credentials)** on every HTTP node. Confirm no \"not connected\" warning remains on any node.\n3. One BC customer per HubSpot contact; the BC customer name is the contact's Company name property. *Workflow Config* holds the BC tenant ID, environment (Production) and company GUID. Check they are right. Its `triggers` list (dealstage=closedwon, hs_is_closed_won=true, closed_won=true) says which property changes start the sync: subscribe the HubSpot webhook to one of them.\n4. Settings -> Error Workflow: set the shared error handler.\n5. Confirm HubSpot properties exist: CONTACT `business_central_record_id` and deal `bc_order_id` (both single-line text). \n6. BC web service **Customer_Card** (page 21) must stay published: new customers are created through it. Fix the customer templates' GST group in BC if you want to return to the standard API.\n7. Primary contact: after the order, the HubSpot contact is created as a BC Person contact under the customer's company contact and set as Primary Contact No. (shows as ERC Primary Contact Name). This runs after the order is created, so a failure here never blocks the order.\n8. BC web service **SalesOrder** (page 42) must stay published: after the order is created and bc_order_id is written, the order page fields are set through it.\n9. Confirm BC item numbers equal HubSpot line item SKUs.\n\n**Real time, no fan-out:** one deal per execution. Order lines go to BC in one call.\n**Duplicate guard:** a deal that already has bc_order_id is skipped. The BC order's Purchase order No. is left blank, so BC has no copy of the deal ID: if the order is created but the write-back to the deal fails, fix bc_order_id by hand before re-running.",
         "height": 240,
         "width": 700,
         "color": 5
@@ -590,7 +590,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4752,
+        5200,
         1312
       ],
       "notesInFlow": true,
@@ -603,7 +603,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        4976,
+        5424,
         1512
       ]
     },
@@ -642,7 +642,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4976,
+        5424,
         1312
       ],
       "credentials": {
@@ -663,7 +663,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5200,
+        5648,
         1312
       ]
     },
@@ -702,7 +702,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5424,
+        5872,
         1312
       ],
       "credentials": {
@@ -745,7 +745,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5648,
+        6096,
         1312
       ],
       "notesInFlow": true,
@@ -760,7 +760,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5872,
+        6320,
         1212
       ]
     },
@@ -789,7 +789,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5872,
+        6320,
         1432
       ],
       "credentials": {
@@ -809,7 +809,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6096,
+        6544,
         1432
       ]
     },
@@ -842,7 +842,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        6320,
+        6768,
         1312
       ],
       "credentials": {
@@ -903,6 +903,86 @@
         240,
         1512
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cb736529-a337-575a-95a7-39de028bc4be",
+              "leftValue": "={{ String(Object.keys($('Build Sales Order Payload').first().json.orderPageFields).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "352b4e86-ca36-59ac-8cbb-54d2716f9f39",
+      "name": "Order Has Page Fields",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4752,
+        1312
+      ],
+      "notesInFlow": true,
+      "notes": "Skipped when the deal has none of the sales-order page properties."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bc.salesOrderPageUrl }}(Document_Type='Order',No='{{ $('Order Ready (New)').first().json.orderNumber }}')",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Match",
+              "value": "*"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Sales Order Payload').first().json.orderPageFields }}",
+        "options": {}
+      },
+      "id": "488a30d2-47f8-5cd7-857d-82c720e83a5f",
+      "name": "Set Sales Order Page Fields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4976,
+        1212
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Runs after bc_order_id is written, so a failure here cannot cause a duplicate order. Sets dates, print/FOB option, product category, job and work description.",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1149,7 +1229,7 @@
       "main": [
         [
           {
-            "node": "Contact Has A Name",
+            "node": "Order Has Page Fields",
             "type": "main",
             "index": 0
           }
@@ -1270,6 +1350,35 @@
         [
           {
             "node": "Skip Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Has Page Fields": {
+      "main": [
+        [
+          {
+            "node": "Set Sales Order Page Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Contact Has A Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Sales Order Page Fields": {
+      "main": [
+        [
+          {
+            "node": "Contact Has A Name",
             "type": "main",
             "index": 0
           }

@@ -19,8 +19,21 @@ const dates = {
 };
 const datePart = Object.fromEntries(Object.entries(dates).filter(([, v]) => v !== undefined));
 
+// Fields written through the Sales Order page after the order exists (page field names). Blank = not sent.
+const t = (v) => (v === undefined || v === null ? undefined : String(v).trim());
+const orderPageFields = Object.fromEntries(Object.entries({
+  Document_Date: toDate(d.document_date),   // before Due_Date: BC recalculates the due date from the document date
+  Due_Date: toDate(d.due_date),
+  ERC_Print_Option: t(d.print_option),
+  ERC_FOB_Option: t(d.fob_option),
+  Product_Category: t(d.product_category),
+  WorkDescription: t(d.description),
+  Job_Description: t(d.job_description) === undefined ? undefined : t(d.job_description).slice(0, 100),
+}).filter(([, v]) => v !== undefined && v !== ''));
+
 return [{ json: {
   dealId,
+  orderPageFields,
   customerNumber: cust.customerNumber,
   salesOrderPayload: {
     customerNumber: cust.customerNumber,
