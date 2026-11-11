@@ -44,11 +44,14 @@ const pageFields = {
   County: raw.state,
   Post_Code: raw.postalCode,
   Country_Region_Code: raw.country,
-  Phone_No: raw.phoneNumber,
+  Phone_No: cut(c.phone, 30),
+  MobilePhoneNo: cut(c.mobilephone, 30),
   E_Mail: raw.email,
+  Invoice_Email: raw.email,   // invoices go to the same address as the email field
   Home_Page: raw.website,
   Segment: cut(c.segment, 30),
   Responsibility_Center: cut(c.responsibility_center, 10),
+  Location_Code: cut(c.location_code, 10),
 };
 // New customer: posting groups first. Existing customer: never touch their posting groups.
 const odataPayload = nonBlank({ ...cfg.bc.newCustomerDefaults, ...pageFields });
