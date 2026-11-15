@@ -2,70 +2,6 @@
   "name": "[NWI] HubSpot Deal Closed Won -> BC Customer + Sales Order",
   "nodes": [
     {
-      "name": "Section 1 - Load HubSpot data",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -24,
-        1152
-      ],
-      "parameters": {
-        "content": "## 1. Load the HubSpot deal\nDeal, primary company, first contact and line items, with checks before anything is written to BC. The Stop nodes give a plain-English error.",
-        "width": 2748,
-        "height": 520,
-        "color": 7
-      },
-      "id": "c22ee9cd-10db-49be-acbc-c63edbf89d65"
-    },
-    {
-      "name": "Section 2 - BC customer",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        2664,
-        832
-      ],
-      "parameters": {
-        "content": "## 2. Business Central customer = HubSpot COMPANY\nCompany has a BC ID: find + update. No BC ID: create, then write the customer number to the company's business_central_id.",
-        "width": 1180,
-        "height": 880,
-        "color": 4
-      },
-      "id": "1a0e7c3f-7b4a-4127-b88f-6a9d5a7cc81d"
-    },
-    {
-      "name": "Section 3 - Sales order",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        3784,
-        992
-      ],
-      "parameters": {
-        "content": "## 3. Sales order\nCreate order (header + lines), write the number to the deal (bc_order_id), then set the page-only fields.",
-        "width": 956,
-        "height": 640,
-        "color": 6
-      },
-      "id": "cf53eeb3-0f14-40d7-b242-310264b51488"
-    },
-    {
-      "name": "Section 4 - BC contact",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        4680,
-        830
-      ],
-      "parameters": {
-        "content": "## 4. Business Central contact = HubSpot CONTACT\nContact has a BC ID: find + update. No BC ID: create under the customer's company contact, then write the contact number to the contact's business_central_record_id. Finally set it as the customer's primary contact. Runs after the order, so a failure here never blocks the order.",
-        "width": 2748,
-        "height": 800,
-        "color": 3
-      },
-      "id": "4692e8f5-973c-5caf-a879-954a9c586e46"
-    },
-    {
       "parameters": {
         "httpMethod": "POST",
         "path": "nwi-hubspot-deal-closedwon",
@@ -76,10 +12,74 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        -432,
-        1296
+        -160,
+        1280
       ],
       "webhookId": "2564def1-f515-544d-911d-915d26a4c94e"
+    },
+    {
+      "parameters": {
+        "content": "## 1. Load the HubSpot deal\nDeal, primary company, first contact and line items, with checks before anything is written to BC. The Stop nodes give a plain-English error.",
+        "height": 520,
+        "width": 2876,
+        "color": 7
+      },
+      "name": "Section 1 - Load HubSpot data",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        1136
+      ],
+      "id": "50248d83-4604-4f78-914d-31562f127048"
+    },
+    {
+      "parameters": {
+        "content": "## 2. Business Central customer = HubSpot COMPANY\nCompany has a BC ID: find + update. No BC ID: create, then write the customer number to the company's business_central_id.",
+        "height": 880,
+        "width": 1180,
+        "color": 4
+      },
+      "name": "Section 2 - BC customer",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        816
+      ],
+      "id": "77007faa-ae72-4c9d-966c-3051e5bfeee8"
+    },
+    {
+      "parameters": {
+        "content": "## 3. Sales order\nCreate order (header + lines), write the number to the deal (bc_order_id), then set the page-only fields.",
+        "height": 640,
+        "width": 956,
+        "color": 6
+      },
+      "name": "Section 3 - Sales order",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3744,
+        976
+      ],
+      "id": "950a7599-b213-47dc-af91-e5ed61803ef1"
+    },
+    {
+      "parameters": {
+        "content": "## 4. Business Central contact = HubSpot CONTACT\nContact has a BC ID: find + update. No BC ID: create under the customer's company contact, then write the contact number to the contact's business_central_record_id. Finally set it as the customer's primary contact. Runs after the order, so a failure here never blocks the order.",
+        "height": 800,
+        "width": 2748,
+        "color": 3
+      },
+      "name": "Section 4 - BC contact",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4640,
+        816
+      ],
+      "id": "c3b18430-c93f-46d3-bcca-8828139f6332"
     },
     {
       "parameters": {
@@ -95,20 +95,13 @@
       "type": "n8n-nodes-base.executionData",
       "typeVersion": 1.1,
       "position": [
-        -208,
-        1296
+        32,
+        1280
       ],
-      "id": "3626594d-dbba-49e0-a2e4-e636fc7ec3c3",
+      "id": "eeeb1844-445a-4d61-881c-ab026ddc7a44",
       "name": "Execution Data"
     },
     {
-      "name": "Workflow Config",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        16,
-        1296
-      ],
       "parameters": {
         "assignments": {
           "assignments": [
@@ -170,9 +163,16 @@
         },
         "options": {}
       },
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        256,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "All settings live here: BC tenant/environment (inside bcBase), BC company, default posting group for NEW customers, which HubSpot properties are fetched, country-name map.",
-      "id": "d0c72c9a-defc-45e3-b47a-a0761817a056"
+      "id": "29b04b81-b8e6-46f9-8c7a-c2c0ab431490",
+      "notes": "All settings live here: BC tenant/environment (inside bcBase), BC company, default posting group for NEW customers, which HubSpot properties are fetched, country-name map."
     },
     {
       "parameters": {
@@ -190,13 +190,13 @@
         },
         "options": {}
       },
-      "id": "972b2fa6-2645-4018-b3a8-2d3d17bf169f",
+      "id": "3b824f1e-2ca3-4fce-b256-7442dbe42120",
       "name": "Get Deal",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        240,
-        1296
+        480,
+        1280
       ],
       "retryOnFail": true,
       "maxTries": 3,
@@ -210,76 +210,28 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "5f7ea53c-9167-5ab2-910b-9300ac267b6f",
-              "leftValue": "={{ String(!String($('Get Deal').first().json.properties.bc_order_id || '').trim()) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "c7daea69-f0de-43b1-b80e-0fc980ce9539",
-      "name": "Deal Has No BC Order",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        464,
-        1296
-      ],
-      "notesInFlow": true,
-      "notes": "Duplicate guard: a deal that already has bc_order_id is skipped."
-    },
-    {
-      "parameters": {},
-      "id": "32f5c513-93b8-484a-bc72-0182640fe399",
-      "name": "Skip Deal",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        464,
-        1520
-      ]
-    },
-    {
-      "name": "Get Deal Company Associations",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        688,
-        1296
-      ],
-      "parameters": {
         "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $('Receive HubSpot Deal Events').item.json.body[0].objectId }}/associations/companies",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
       },
+      "name": "Get Deal Company Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        656,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "ca5c15c8-f2aa-486f-8d8c-71f5883134af",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
           "name": "HubSpot Service Key account"
         }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "id": "c7044bd2-4afa-58c6-8a69-3f26df05c94c"
+      }
     },
     {
       "parameters": {
@@ -288,13 +240,13 @@
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
       },
-      "id": "28f8b0bf-98ac-4df3-a6f1-52724ea15112",
+      "id": "84ce505b-cc0d-452e-9b0d-4ed04161af29",
       "name": "Get Deal Contact Associations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        912,
-        1296
+        880,
+        1280
       ],
       "retryOnFail": true,
       "maxTries": 3,
@@ -313,13 +265,13 @@
         "nodeCredentialType": "hubspotAppToken",
         "options": {}
       },
-      "id": "ffe84a14-81f3-4db5-821b-5d936c876081",
+      "id": "ab4b1fb0-dbcd-435b-871a-772ce60cf1a5",
       "name": "Get Deal Line Item Associations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1136,
-        1296
+        1104,
+        1280
       ],
       "retryOnFail": true,
       "maxTries": 3,
@@ -332,13 +284,6 @@
       }
     },
     {
-      "name": "Selected Records",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        1360,
-        1296
-      ],
       "parameters": {
         "assignments": {
           "assignments": [
@@ -364,18 +309,18 @@
         },
         "options": {}
       },
+      "name": "Selected Records",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "The deal's PRIMARY company (falls back to the first one) and its first contact. The company becomes the BC customer, the contact becomes a BC contact.",
-      "id": "6ba00b03-b57c-50c2-84fc-bab1aca25112"
+      "id": "4c28d338-a59b-4085-a58c-7ea975995a80",
+      "notes": "The deal's PRIMARY company (falls back to the first one) and its first contact. The company becomes the BC customer, the contact becomes a BC contact."
     },
     {
-      "name": "Deal Has Company And Lines",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        1584,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -411,31 +356,31 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "Deal Has Company And Lines",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "Needs a company and at least one line item. A contact is optional.",
-      "id": "db2e19ff-3f5b-5dc9-9bc4-7491966de7c7"
+      "id": "bc82a69c-298f-4308-b1fd-1b93ebb04b66",
+      "notes": "Needs a company and at least one line item. A contact is optional."
     },
     {
+      "parameters": {
+        "errorMessage": "=Deal {{ $('Get Deal').first().json.id }} needs an associated company (ideally marked Primary) and at least one line item (found {{ $('Get Deal Company Associations').first().json.results.length }} companies, {{ $('Get Deal Line Item Associations').first().json.results.length }} line items)"
+      },
       "name": "Stop - Deal Missing Company Or Lines",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        1584,
-        1520
+        1552,
+        1504
       ],
-      "parameters": {
-        "errorMessage": "=Deal {{ $('Get Deal').first().json.id }} needs an associated company (ideally marked Primary) and at least one line item (found {{ $('Get Deal Company Associations').first().json.results.length }} companies, {{ $('Get Deal Line Item Associations').first().json.results.length }} line items)"
-      },
-      "id": "dd98c3c3-fd74-56a5-bc1b-f6e0235301c6"
+      "id": "cfee60a5-7830-458c-9d63-45e10424d961"
     },
     {
-      "name": "Get Company",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1808,
-        1296
-      ],
       "parameters": {
         "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $('Selected Records').first().json.companyId }}",
         "authentication": "predefinedCredentialType",
@@ -451,25 +396,25 @@
         },
         "options": {}
       },
+      "name": "Get Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1776,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "88d9565f-1853-4a48-a123-d35ebe773d19",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
           "name": "HubSpot Service Key account"
         }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "id": "341fcd17-0c8f-5070-aee7-39f1c86ba07b"
+      }
     },
     {
-      "name": "Company Has Name",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        2032,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -495,22 +440,29 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "Company Has Name",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2000,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "The BC customer name is the company's Company name.",
-      "id": "3ab8887a-68b7-59cf-ae6a-1a468ac5df7a"
+      "id": "d5643338-cd73-49a0-ba4b-ba985624cf3b",
+      "notes": "The BC customer name is the company's Company name."
     },
     {
+      "parameters": {
+        "errorMessage": "=HubSpot company {{ $('Selected Records').first().json.companyId }} has no Company name, which becomes the BC customer name"
+      },
       "name": "Stop - Company Has No Name",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        2032,
-        1520
+        2000,
+        1504
       ],
-      "parameters": {
-        "errorMessage": "=HubSpot company {{ $('Selected Records').first().json.companyId }} has no Company name, which becomes the BC customer name"
-      },
-      "id": "6ae807b9-c907-5ff8-8714-4f4e55949cca"
+      "id": "75110fa3-d3a3-43a5-955b-af1982a321dd"
     },
     {
       "parameters": {
@@ -527,14 +479,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2256,
-        1296
+        2224,
+        1280
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "id": "906e435c-f321-405b-b522-63a578526044",
+      "id": "22fb48bb-6fdd-4e85-b7c7-3cc94c4cbe9c",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
@@ -583,11 +535,11 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2480,
-        1296
+        2448,
+        1280
       ],
       "notesInFlow": true,
-      "id": "22fde915-5055-4695-b049-d4ab2e4b5da7",
+      "id": "e2a0e0da-62ae-4077-9de8-c4d1059a38b6",
       "notes": "Every line item needs a SKU (= BC item number), quantity above 0 and a unit price. Checked before anything is written to BC."
     },
     {
@@ -598,19 +550,12 @@
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        2480,
-        1520
+        2448,
+        1504
       ],
-      "id": "aa38af55-ca1e-4bc2-88d2-34280c1195ec"
+      "id": "ce9ca6ad-d12d-4930-80fe-18ca600841dc"
     },
     {
-      "name": "Company Has BC ID",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        2704,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -636,31 +581,22 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "Company Has BC ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2672,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "true = update the existing BC customer; false = create a new one.",
-      "id": "cdc5b921-2d7c-5f1e-80f2-1a898adf85a9"
+      "id": "7ef5ac1b-b617-45fc-900a-fdabb562efd2",
+      "notes": "true = update the existing BC customer; false = create a new one."
     },
     {
-      "name": "Find BC Customer",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2928,
-        1120
-      ],
       "parameters": {
         "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/customers",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -674,27 +610,36 @@
             }
           ]
         },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
         "options": {}
       },
+      "name": "Find BC Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2896,
+        1104
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "d053eff5-b24c-4c9f-ae5f-9ccc7a2ad7f0",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "id": "8ffae413-4128-49eb-870c-691e7c5095de"
+      }
     },
     {
-      "name": "BC Customer Found",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        3152,
-        1120
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -719,34 +664,34 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "BC Customer Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3120,
+        1104
+      ],
       "notesInFlow": true,
-      "notes": "The ID on the HubSpot company must match exactly one BC customer, otherwise stop (no duplicate is created).",
-      "id": "c5ff17f9-dc0f-4bb0-81dd-9d2377de0ede"
+      "id": "3047e653-60c6-448b-ab5c-ca3feb82f688",
+      "notes": "The ID on the HubSpot company must match exactly one BC customer, otherwise stop (no duplicate is created)."
     },
     {
+      "parameters": {
+        "errorMessage": "=HubSpot company has business_central_id \"{{ $('Get Company').first().json.properties.business_central_id }}\" but Business Central returned {{ $json.value.length }} matching customers. Not creating a duplicate - fix the ID in HubSpot."
+      },
       "name": "Stop - BC Customer Not Found",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        3152,
-        896
+        3344,
+        960
       ],
-      "parameters": {
-        "errorMessage": "=HubSpot company has business_central_id \"{{ $('Get Company').first().json.properties.business_central_id }}\" but Business Central returned {{ $json.value.length }} matching customers. Not creating a duplicate - fix the ID in HubSpot."
-      },
-      "id": "81ab729d-dad9-4823-8c10-d571262875a8"
+      "id": "1f091cb1-2390-492b-a5fe-1027dae7cc0f"
     },
     {
-      "name": "Update BC Customer",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3376,
-        1120
-      ],
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card('{{ $('Find BC Customer').first().json.value[0].number }}')",
         "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card('{{ $('Find BC Customer').first().json.value[0].number }}')",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -767,30 +712,30 @@
         "jsonBody": "={{ ({\n  \"Name\": $('Get Company').first().json.properties.name,\n  \"Address\": $('Get Company').first().json.properties.address || undefined,\n  \"City\": $('Get Company').first().json.properties.city || undefined,\n  \"County\": $('Get Company').first().json.properties.state || undefined,\n  \"Post_Code\": $('Get Company').first().json.properties.zip || undefined,\n  \"Country_Region_Code\": (/^[A-Za-z]{2}$/.test($('Get Company').first().json.properties.country || \"\") ? $('Get Company').first().json.properties.country.toUpperCase() : $('Workflow Config').first().json.countryMap[String($('Get Company').first().json.properties.country || \"\").toLowerCase()]),\n  \"Phone_No\": $('Get Company').first().json.properties.phone || undefined,\n  \"E_Mail\": $('Get Company').first().json.properties.email || undefined,\n  \"Invoice_Email\": $('Get Company').first().json.properties.invoice_email || undefined,\n  \"Home_Page\": $('Get Company').first().json.properties.website || undefined,\n  \"Segment\": $('Get Company').first().json.properties.segment || undefined,\n  \"Responsibility_Center\": $('Get Company').first().json.properties.responsibility_center || undefined,\n  \"Location_Code\": $('Get Company').first().json.properties.location_code || undefined,\n  \"ABN\": $('Get Company').first().json.properties.abn || undefined\n}) }}",
         "options": {}
       },
+      "name": "Update BC Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3344,
+        1104
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "f4e5501a-b735-4cef-b5f0-1bf446612489",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
       },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notesInFlow": true,
-      "notes": "OData Customer_Card PATCH. A blank HubSpot value is left out so it never wipes what is in BC. Posting groups are never touched.",
-      "id": "d1718dfa-4fad-405c-8c79-00eee974dfa3"
+      "notes": "OData Customer_Card PATCH. A blank HubSpot value is left out so it never wipes what is in BC. Posting groups are never touched."
     },
     {
-      "name": "Create BC Customer",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2928,
-        1472
-      ],
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card",
         "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -807,27 +752,27 @@
         "jsonBody": "={{ ({\n  \"Gen_Bus_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"VAT_Bus_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"Customer_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"Name\": $('Get Company').first().json.properties.name,\n  \"Address\": $('Get Company').first().json.properties.address || undefined,\n  \"City\": $('Get Company').first().json.properties.city || undefined,\n  \"County\": $('Get Company').first().json.properties.state || undefined,\n  \"Post_Code\": $('Get Company').first().json.properties.zip || undefined,\n  \"Country_Region_Code\": (/^[A-Za-z]{2}$/.test($('Get Company').first().json.properties.country || \"\") ? $('Get Company').first().json.properties.country.toUpperCase() : $('Workflow Config').first().json.countryMap[String($('Get Company').first().json.properties.country || \"\").toLowerCase()]),\n  \"Phone_No\": $('Get Company').first().json.properties.phone || undefined,\n  \"E_Mail\": $('Get Company').first().json.properties.email || undefined,\n  \"Invoice_Email\": $('Get Company').first().json.properties.invoice_email || undefined,\n  \"Home_Page\": $('Get Company').first().json.properties.website || undefined,\n  \"Segment\": $('Get Company').first().json.properties.segment || undefined,\n  \"Responsibility_Center\": $('Get Company').first().json.properties.responsibility_center || undefined,\n  \"Location_Code\": $('Get Company').first().json.properties.location_code || undefined,\n  \"ABN\": $('Get Company').first().json.properties.abn || undefined\n}) }}",
         "options": {}
       },
+      "name": "Create BC Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2896,
+        1456
+      ],
+      "notesInFlow": true,
+      "id": "f87983b6-7d42-40c7-940f-0c2dc3b89962",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
       },
-      "notesInFlow": true,
-      "notes": "Creates via OData Customer_Card (the standard API create fails on the template GST group). Create call: no retry, by design.",
-      "id": "84c08c52-f85f-4dad-8047-ae79383b9f7e"
+      "notes": "Creates via OData Customer_Card (the standard API create fails on the template GST group). Create call: no retry, by design."
     },
     {
-      "name": "Write BC Customer Number To Company",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3152,
-        1472
-      ],
       "parameters": {
-        "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $('Selected Records').first().json.companyId }}",
         "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $('Selected Records').first().json.companyId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
@@ -835,27 +780,27 @@
         "jsonBody": "={{ ({\n  \"properties\": { \"business_central_id\": $('Create BC Customer').first().json.No }\n}) }}",
         "options": {}
       },
+      "name": "Write BC Customer Number To Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        1456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "f9de6e8e-ded1-4b11-84d5-25803e6c18bf",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
           "name": "HubSpot Service Key account"
         }
       },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notesInFlow": true,
-      "notes": "Written straight after the create so a later failure cannot lose the link.",
-      "id": "6c7f1fd3-f32c-5dad-861b-d85a533088ae"
+      "notes": "Written straight after the create so a later failure cannot lose the link."
     },
     {
-      "name": "Customer Ready",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        3600,
-        1296
-      ],
       "parameters": {
         "assignments": {
           "assignments": [
@@ -869,9 +814,16 @@
         },
         "options": {}
       },
+      "name": "Customer Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3568,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "Both branches (new / existing) meet here with the BC customer number.",
-      "id": "8659823a-e9d1-4bb9-8c87-7af645f026bf"
+      "id": "5dec8703-ab89-4e65-8ce4-e0c209935e93",
+      "notes": "Both branches (new / existing) meet here with the BC customer number."
     },
     {
       "parameters": {
@@ -897,11 +849,11 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3824,
-        1296
+        3792,
+        1280
       ],
       "notesInFlow": true,
-      "id": "69dfe098-d97f-4382-8f3d-e648bf7d83cb",
+      "id": "1066268e-7ef9-4afe-bbee-a6f3dc4a0aca",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
@@ -925,13 +877,13 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4048,
-        1296
+        4016,
+        1280
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
-      "id": "e60cad56-08b1-4499-b52e-7cac985d7f71",
+      "id": "10f252f5-8386-47d4-94f2-b7bde5719345",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
@@ -1029,11 +981,11 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4272,
-        1296
+        4240,
+        1280
       ],
       "notesInFlow": true,
-      "id": "bc6a47e0-b134-4259-b7cc-20097a0a97da",
+      "id": "e2269e55-25f6-46be-97e0-0dde427ae9a5",
       "notes": "Skipped when the deal has none of the sales-order page properties."
     },
     {
@@ -1057,21 +1009,21 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  \"Document_Date\": ($('Get Deal').first().json.properties.document_date || \"\").slice(0, 10) || undefined,\n  \"Due_Date\": ($('Get Deal').first().json.properties.due_date || \"\").slice(0, 10) || undefined,\n  \"ERC_Print_Option\": $('Get Deal').first().json.properties.print_option || undefined,\n  \"ERC_FOB_Option\": $('Get Deal').first().json.properties.fob_option || undefined,\n  \"Product_Category\": $('Get Deal').first().json.properties.product_category || undefined,\n  \"WorkDescription\": $('Get Deal').first().json.properties.description || undefined,\n  \"Job_Description\": ($('Get Deal').first().json.properties.job_description || \"\").slice(0, 100) || undefined\n}) }}",
+        "jsonBody": "={{ ({\n  \"Document_Date\": ($('Get Deal').first().json.properties.document_date || \"\").slice(0, 10) || undefined,\n  \"Due_Date\": ($('Get Deal').first().json.properties.due_date || \"\").slice(0, 10) || undefined,\n  \"Product_Category\": $('Get Deal').first().json.properties.product_category || undefined,\n  \"WorkDescription\": $('Get Deal').first().json.properties.description || undefined,\n  \"Job_Description\": ($('Get Deal').first().json.properties.job_description || \"\").slice(0, 100) || undefined\n}) }}",
         "options": {}
       },
       "name": "Set Sales Order Page Fields",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4496,
-        1120
+        4464,
+        1104
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "id": "b894275d-3ccc-4ee8-a9dd-8e1124a9257e",
+      "id": "8cd0f806-8b23-4dca-9a69-5c8dafb3f7e5",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
@@ -1081,13 +1033,6 @@
       "notes": "Runs after bc_order_id is written, so a failure here cannot cause a duplicate order. Document_Date is listed before Due_Date on purpose: BC recalculates the due date from the document date."
     },
     {
-      "name": "Deal Has A Contact",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        4720,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1113,29 +1058,29 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "Deal Has A Contact",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4688,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "No contact on the deal: the customer and order are already done, so just stop here.",
-      "id": "ea0ebcba-356b-5e57-bfab-6ef124f87372"
+      "id": "3352e986-a8a4-4ec0-b21d-55f411dfa0c4",
+      "notes": "No contact on the deal: the customer and order are already done, so just stop here."
     },
     {
+      "parameters": {},
       "name": "Skip Contact",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        4720,
-        1520
+        4688,
+        1504
       ],
-      "parameters": {},
-      "id": "a04698a4-0c6a-5c97-97a8-7d5dd9674bb0"
+      "id": "3f34fa3c-3bd7-47ed-b0ac-228e581583a1"
     },
     {
-      "name": "Get Contact",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        4944,
-        1296
-      ],
       "parameters": {
         "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $('Selected Records').first().json.contactId }}",
         "authentication": "predefinedCredentialType",
@@ -1151,25 +1096,25 @@
         },
         "options": {}
       },
+      "name": "Get Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4912,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "a80cd5be-aade-4093-a4ab-2b1fa69d29fe",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
           "name": "HubSpot Service Key account"
         }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "id": "49451291-1da2-4502-9ece-c688cb7c0c00"
+      }
     },
     {
-      "name": "Contact Has A Name",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        5168,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1205,31 +1150,22 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "Contact Has A Name",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5136,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "No first/last name on the HubSpot contact: nothing to create in BC.",
-      "id": "a2fd5479-2de4-47c6-a2d0-88767ace4e37"
+      "id": "61b52363-d662-47e1-bfe2-c9a292ea9edd",
+      "notes": "No first/last name on the HubSpot contact: nothing to create in BC."
     },
     {
-      "name": "Get BC Customer Contacts",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        5392,
-        1296
-      ],
       "parameters": {
         "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/customers",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -1243,27 +1179,36 @@
             }
           ]
         },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
         "options": {}
       },
+      "name": "Get BC Customer Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5360,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "5622c8e8-f701-451d-aea4-745f2c3fb024",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "id": "7258bb05-47f2-40c4-9b67-e3f60ef01563"
+      }
     },
     {
-      "name": "Prepare Company Contact",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        5616,
-        1296
-      ],
       "parameters": {
         "assignments": {
           "assignments": [
@@ -1289,18 +1234,18 @@
         },
         "options": {}
       },
+      "name": "Prepare Company Contact",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5584,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "The customer's BC company contact (the new person is created under it) and the person's full name.",
-      "id": "f78ceda5-52ae-5737-9dda-8ff28156507f"
+      "id": "3d539b56-1576-4c35-9945-77e3b0eb3db7",
+      "notes": "The customer's BC company contact (the new person is created under it) and the person's full name."
     },
     {
-      "name": "Company Contact Found",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        5840,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1326,29 +1271,29 @@
         "looseTypeValidation": true,
         "options": {}
       },
-      "id": "0afa54ae-eb04-400b-b70f-bc173be8cfb5"
+      "name": "Company Contact Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5808,
+        1280
+      ],
+      "id": "6657c97c-78b5-4bf4-87ec-0f1f07e50311"
     },
     {
+      "parameters": {
+        "errorMessage": "=BC customer {{ $json.customerNumber }} has no company contact, so the BC contact cannot be created"
+      },
       "name": "Stop - No Company Contact In BC",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        5840,
-        1520
+        5808,
+        1504
       ],
-      "parameters": {
-        "errorMessage": "=BC customer {{ $json.customerNumber }} has no company contact, so the BC contact cannot be created"
-      },
-      "id": "f330c055-b5f6-4554-8485-fab5f44db432"
+      "id": "4af35138-0010-4484-aa0c-4d40b84cfaa7"
     },
     {
-      "name": "Contact Has BC ID",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        6064,
-        1296
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1374,31 +1319,22 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "Contact Has BC ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6032,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "true = update the existing BC contact; false = create a new one.",
-      "id": "730e5950-934d-4adb-b3e1-a7320e3de8af"
+      "id": "93d8f557-d529-4b5d-a905-bd2b6d69c1db",
+      "notes": "true = update the existing BC contact; false = create a new one."
     },
     {
-      "name": "Find BC Contact",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        6288,
-        1120
-      ],
       "parameters": {
         "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -1412,27 +1348,36 @@
             }
           ]
         },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
         "options": {}
       },
+      "name": "Find BC Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6256,
+        1104
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "71177e33-de9e-4d69-af58-16bbda8fec88",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "id": "fc771083-7d11-5283-8d85-e756cf4d70e8"
+      }
     },
     {
-      "name": "BC Contact Found",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        6512,
-        1120
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1457,34 +1402,34 @@
         "looseTypeValidation": true,
         "options": {}
       },
+      "name": "BC Contact Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6480,
+        1104
+      ],
       "notesInFlow": true,
-      "notes": "The ID on the HubSpot contact must match exactly one BC contact, otherwise stop (no duplicate is created).",
-      "id": "4e56b0eb-a99f-5ecd-9924-6648b0995b9c"
+      "id": "1b1e9e40-2a98-4d03-8b05-dca79c5f7c10",
+      "notes": "The ID on the HubSpot contact must match exactly one BC contact, otherwise stop (no duplicate is created)."
     },
     {
+      "parameters": {
+        "errorMessage": "=HubSpot contact has business_central_record_id \"{{ $('Get Contact').first().json.properties.business_central_record_id }}\" but Business Central returned {{ $json.value.length }} matching contacts. Not creating a duplicate - fix the ID in HubSpot."
+      },
       "name": "Stop - BC Contact Not Found",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        6512,
-        896
+        6480,
+        880
       ],
-      "parameters": {
-        "errorMessage": "=HubSpot contact has business_central_record_id \"{{ $('Get Contact').first().json.properties.business_central_record_id }}\" but Business Central returned {{ $json.value.length }} matching contacts. Not creating a duplicate - fix the ID in HubSpot."
-      },
-      "id": "ad1c1caf-6754-5242-a195-75dcb9b2f3bc"
+      "id": "a6644a36-b4f7-40bc-9e9e-25076d6f0a50"
     },
     {
-      "name": "Update BC Contact",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        6736,
-        1120
-      ],
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts({{ $('Find BC Contact').first().json.value[0].id }})",
         "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts({{ $('Find BC Contact').first().json.value[0].id }})",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -1505,30 +1450,30 @@
         "jsonBody": "={{ ({\n  \"displayName\": $('Prepare Company Contact').first().json.personName,\n  \"email\": $('Get Contact').first().json.properties.email || undefined,\n  \"phoneNumber\": $('Get Contact').first().json.properties.phone || undefined,\n  \"mobilePhoneNumber\": $('Get Contact').first().json.properties.mobilephone || undefined\n}) }}",
         "options": {}
       },
+      "name": "Update BC Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6704,
+        1104
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "9efb852c-b544-4b0b-9716-32b9a565b213",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
       },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notesInFlow": true,
-      "notes": "Blank HubSpot values are left out so they never wipe what is in BC.",
-      "id": "7b7bbf74-9c65-52af-ab1e-e51baf33e8b2"
+      "notes": "Blank HubSpot values are left out so they never wipe what is in BC."
     },
     {
-      "name": "Create BC Contact",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        6288,
-        1472
-      ],
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts",
         "method": "POST",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -1545,27 +1490,27 @@
         "jsonBody": "={{ ({\n  \"type\": \"Person\",\n  \"companyNumber\": $('Prepare Company Contact').first().json.companyContactNumber,\n  \"displayName\": $('Prepare Company Contact').first().json.personName,\n  \"email\": $('Get Contact').first().json.properties.email || undefined,\n  \"phoneNumber\": $('Get Contact').first().json.properties.phone || undefined,\n  \"mobilePhoneNumber\": $('Get Contact').first().json.properties.mobilephone || undefined\n}) }}",
         "options": {}
       },
+      "name": "Create BC Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6256,
+        1456
+      ],
+      "notesInFlow": true,
+      "id": "0fe412e9-15ec-4969-b45b-e71bac263d36",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
       },
-      "notesInFlow": true,
-      "notes": "Creates a Person contact under the customer's company contact, which links the two in BC. Create call: no retry, by design.",
-      "id": "b509dcca-ff3a-50c7-b199-568d395640ff"
+      "notes": "Creates a Person contact under the customer's company contact, which links the two in BC. Create call: no retry, by design."
     },
     {
-      "name": "Write BC Contact Number To Contact",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        6512,
-        1472
-      ],
       "parameters": {
-        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $('Selected Records').first().json.contactId }}",
         "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $('Selected Records').first().json.contactId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
@@ -1573,27 +1518,27 @@
         "jsonBody": "={{ ({\n  \"properties\": { \"business_central_record_id\": $('Create BC Contact').first().json.number }\n}) }}",
         "options": {}
       },
+      "name": "Write BC Contact Number To Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6480,
+        1456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "6839d257-4e38-4efa-8319-01aaf3e1d54b",
       "credentials": {
         "hubspotAppToken": {
           "id": "t5mdhP4EGV51VOhT",
           "name": "HubSpot Service Key account"
         }
       },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notesInFlow": true,
-      "notes": "Written straight after the create so a later failure cannot lose the link.",
-      "id": "4e95ad91-b160-55a6-993b-d6b85a0c40e8"
+      "notes": "Written straight after the create so a later failure cannot lose the link."
     },
     {
-      "name": "Contact Ready",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        6960,
-        1296
-      ],
       "parameters": {
         "assignments": {
           "assignments": [
@@ -1607,21 +1552,21 @@
         },
         "options": {}
       },
+      "name": "Contact Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        6928,
+        1280
+      ],
       "notesInFlow": true,
-      "notes": "New and existing contact meet here with the BC contact number.",
-      "id": "89c57243-a9ca-5783-8f61-f2b19a615948"
+      "id": "4fedaa80-9b5e-488c-9afd-f7e6f077301b",
+      "notes": "New and existing contact meet here with the BC contact number."
     },
     {
-      "name": "Set Primary Contact On Customer",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        7184,
-        1296
-      ],
       "parameters": {
-        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card('{{ $('Prepare Company Contact').first().json.customerNumber }}')",
         "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card('{{ $('Prepare Company Contact').first().json.customerNumber }}')",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -1642,18 +1587,25 @@
         "jsonBody": "={{ ({\n  \"Primary_Contact_No\": $json.contactNumber\n}) }}",
         "options": {}
       },
+      "name": "Set Primary Contact On Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7152,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "2d286696-2c22-47ef-823d-89d7cfa657df",
       "credentials": {
         "oAuth2Api": {
           "id": "YPXK2LmAIUaC2Fbb",
           "name": "Business Central – NWI Group (client credentials)"
         }
       },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notesInFlow": true,
-      "notes": "Sets Primary Contact No. so BC shows the contact as \"ERC Primary Contact Name\".",
-      "id": "54aad794-b027-4a62-beeb-b6e5c07ffe73"
+      "notes": "Sets Primary Contact No. so BC shows the contact as \"ERC Primary Contact Name\"."
     }
   ],
   "pinData": {},
@@ -1695,25 +1647,7 @@
       "main": [
         [
           {
-            "node": "Deal Has No BC Order",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Deal Has No BC Order": {
-      "main": [
-        [
-          {
             "node": "Get Deal Company Associations",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Skip Deal",
             "type": "main",
             "index": 0
           }
@@ -2161,14 +2095,17 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
+  "versionId": "733a3cfd-15f2-4ab8-a1ac-ca22da895804",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "f23b00957b8a5ab144d387f8ea835b68674785498bffff60faaf323c02e59685"
   },
+  "nodeGroups": [],
+  "id": "nKMyrqbpSCppHcxY",
   "tags": []
 }
