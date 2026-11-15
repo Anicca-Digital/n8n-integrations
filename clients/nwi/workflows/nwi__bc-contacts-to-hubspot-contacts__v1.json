@@ -1,0 +1,429 @@
+{
+  "name": "[NWI] BC Contacts -> HubSpot Contacts (daily)",
+  "nodes": [
+    {
+      "name": "Setup Checklist",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        -700
+      ],
+      "parameters": {
+        "content": "## NWI - BC Contacts -> HubSpot contacts (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so midnight means midnight Sydney.\n3. Uses the standard BC API only (contacts), no web service needed.\n4. HubSpot contact property `business_central_record_id` holds the BC contact number and is how a record is matched. Nothing here is a dropdown.\n5. **Workflow Config** holds the lookback window (25h = daily run + 1h overlap), batch size and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC contacts created or changed in the last 25 hours, finds the matching HubSpot contacts by `business_central_record_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. HubSpot records are never created. Safe to re-run.",
+        "width": 760,
+        "height": 460,
+        "color": 5
+      },
+      "id": "451c9033-5775-572f-a34e-aeb3e4561d28"
+    },
+    {
+      "name": "Every Day At Midnight",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 0
+            }
+          ]
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Runs once a day at midnight (set the workflow timezone to Australia/Sydney). Production runs only - publish the workflow.",
+      "id": "6404379d-7e22-56b0-bc56-086c9894c7a4"
+    },
+    {
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fa34c98d-cfc4-5def-821f-cbf7b5d45d72",
+              "name": "bcBase",
+              "value": "https://api.businesscentral.dynamics.com/v2.0/0dc6b780-5b9e-4809-afb6-6bc499280f23/Production",
+              "type": "string"
+            },
+            {
+              "id": "6d7c0604-3c48-53b7-b63a-3395aaa130b7",
+              "name": "bcCompanyId",
+              "value": "4b4f1461-9f6d-ea11-a813-000d3acaa8ce",
+              "type": "string"
+            },
+            {
+              "id": "84de29c3-6b11-5474-bb90-f6e24e76eccf",
+              "name": "bcCompanyName",
+              "value": "National Weighing & Instrument",
+              "type": "string"
+            },
+            {
+              "id": "6f4e9caa-bdea-52cd-82db-e04a6d2a539b",
+              "name": "lookbackHours",
+              "value": "25",
+              "type": "number"
+            },
+            {
+              "id": "5891c373-2b6c-5bee-91ac-8af50fd1eb3c",
+              "name": "batchSize",
+              "value": "50",
+              "type": "number"
+            },
+            {
+              "id": "ca36aabf-ce6a-5ae8-8ade-f7142aff7880",
+              "name": "matchProperty",
+              "value": "business_central_record_id",
+              "type": "string"
+            },
+            {
+              "id": "d5bbeb32-66d4-5bf4-84e9-bfe9509e4842",
+              "name": "fieldMap",
+              "value": "{\n  \"firstName\": \"firstname\",\n  \"surname\": \"lastname\",\n  \"email\": \"email\",\n  \"phoneNumber\": \"phone\",\n  \"mobilePhoneNumber\": \"mobilephone\"\n}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "lookbackHours: how far back to look (25 = daily run + 1h overlap). matchProperty: HubSpot property holding the BC number. fieldMap: BC field -> HubSpot property.",
+      "id": "d83c56c9-bf6f-52b1-8ab5-f8e88fd4932b"
+    },
+    {
+      "name": "List Changed BC Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ \"type eq 'Person' and lastModifiedDateTime ge \" + $now.minus({ hours: Number($('Workflow Config').first().json.lookbackHours) }).toUTC().toISO() }}"
+            },
+            {
+              "name": "$select",
+              "value": "number,firstName,surname,email,phoneNumber,mobilePhoneNumber"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "One call: every contact created or modified in the window. Returns all the fields we sync, so no second BC call is needed.",
+      "id": "30163fa3-91da-5b5c-aaab-6041aaf25413"
+    },
+    {
+      "name": "Any Changed Contacts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7ecda255-3ec1-56e8-a2f9-c6a1d3b79705",
+              "leftValue": "={{ String($json.value.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "0267cd1c-b7b6-588b-bf54-e8cf865d3b79"
+    },
+    {
+      "name": "No Changes To Sync",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        448,
+        200
+      ],
+      "parameters": {},
+      "id": "33383c2e-7c95-5aae-951d-e56a3c52e0d0"
+    },
+    {
+      "name": "Build Search Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Splits the changed BC contact numbers into batches of up to 100 (the HubSpot search IN limit),\n// so one search call finds the HubSpot contacts for a whole batch.\nconst numbers = ($input.first().json.value || []).map((c) => c.number);\nconst batches = [];\nfor (let i = 0; i < numbers.length; i += 100) batches.push({ json: { numbers: numbers.slice(i, i + 100) } });\nreturn batches;"
+      },
+      "notesInFlow": true,
+      "notes": "Splits the contact numbers into batches of 100 (the HubSpot search limit). One item per batch.",
+      "id": "8547ddf5-3803-5862-b93f-ae3b32ef9b34"
+    },
+    {
+      "name": "Find Matching Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [{ \"propertyName\": $('Workflow Config').first().json.matchProperty, \"operator\": \"IN\", \"values\": $json.numbers }] }],\n  \"properties\": [$('Workflow Config').first().json.matchProperty, ...Object.keys($('Workflow Config').first().json.fieldMap).map((k) => $('Workflow Config').first().json.fieldMap[k])],\n  \"limit\": 100\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Read-only search (POST is only the HubSpot search convention): one call finds the HubSpot records for a whole batch.",
+      "id": "3ad0d030-8f1f-53dd-b3df-2c1aafca5dfd"
+    },
+    {
+      "name": "Compare And Build Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Joins the changed BC contacts with the matching HubSpot contacts (by business_central_record_id)\n// and keeps ONLY the properties whose value differs. BC wins; a blank BC value never overwrites HubSpot.\n// Output: one item per HubSpot batch-update call (up to 100 contacts each). No changes = no items.\nconst cfg = $('Workflow Config').first().json;\nconst map = typeof cfg.fieldMap === 'string' ? JSON.parse(cfg.fieldMap) : cfg.fieldMap; // BC field -> HubSpot property\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nconst contacts = {};\nfor (const c of $('List Changed BC Contacts').first().json.value || []) contacts[String(c.number)] = c;\n\nconst inputs = [];\nfor (const item of $input.all()) {\n  for (const contact of item.json.results || []) {\n    const bc = contacts[norm(contact.properties[cfg.matchProperty])];\n    if (!bc) continue;\n    const properties = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const bcValue = norm(bc[bcField]);\n      if (!bcValue) continue;                                   // blank in BC: leave HubSpot alone\n      const same = bcField === 'email'\n        ? bcValue.toLowerCase() === norm(contact.properties[hsProp]).toLowerCase()\n        : bcValue === norm(contact.properties[hsProp]);\n      if (!same) properties[hsProp] = bcValue;\n    }\n    if (Object.keys(properties).length) inputs.push({ id: contact.id, properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < inputs.length; i += 100) out.push({ json: { inputs: inputs.slice(i, i + 100) } });\nreturn out;"
+      },
+      "notesInFlow": true,
+      "notes": "Keeps only properties that differ. Blank BC values are ignored. No changes = no output, so the next node does not run.",
+      "id": "a3b39023-a2de-58e6-acb3-8dd2b0db865d"
+    },
+    {
+      "name": "Update HubSpot Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/batch/update",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"inputs\": $json.inputs\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Batch update, up to 100 contacts per call. Updates only: records are never created. Setting the same value twice is harmless, so retry is safe.",
+      "id": "b4fe4547-2471-5a14-86fd-77ce5185f540"
+    },
+    {
+      "name": "Section 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        -140
+      ],
+      "parameters": {
+        "content": "## 1. Find changed BC contacts\nOne call lists everything created or modified in the lookback window.",
+        "width": 790,
+        "height": 400,
+        "color": 7
+      },
+      "id": "b22b37b2-9bf5-5a78-9894-34987a68e757"
+    },
+    {
+      "name": "Section 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        632,
+        -140
+      ],
+      "parameters": {
+        "content": "## 2. Find the HubSpot records\nOne search per batch of 100 contacts.",
+        "width": 638,
+        "height": 400,
+        "color": 4
+      },
+      "id": "b7e3bd65-2e61-55df-a536-66ab897fc9e3"
+    },
+    {
+      "name": "Section 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        -140
+      ],
+      "parameters": {
+        "content": "## 3. Write only what changed\nCompares BC to HubSpot and updates up to 100 records per call.",
+        "width": 528,
+        "height": 400,
+        "color": 6
+      },
+      "id": "c0837574-b510-593b-9c56-18dd7d5615fd"
+    }
+  ],
+  "connections": {
+    "Every Day At Midnight": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "List Changed BC Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Changed BC Contacts": {
+      "main": [
+        [
+          {
+            "node": "Any Changed Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Changed Contacts": {
+      "main": [
+        [
+          {
+            "node": "Build Search Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Changes To Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Batches": {
+      "main": [
+        [
+          {
+            "node": "Find Matching Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Matching Contacts": {
+      "main": [
+        [
+          {
+            "node": "Compare And Build Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare And Build Updates": {
+      "main": [
+        [
+          {
+            "node": "Update HubSpot Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney"
+  },
+  "pinData": {}
+}

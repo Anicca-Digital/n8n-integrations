@@ -23,3 +23,9 @@ Runs after the order is created, so a failure here never blocks the order. It lo
 
 ## Sales order fields
 The order is created through the standard API (header + lines, with Order / Posting / Requested Delivery dates from the deal). After the order number is written to the deal's `bc_order_id`, the Sales Order page (web service `SalesOrder`, page 42) sets the rest: Document_Date (`document_date`), Due_Date (`due_date`), ERC_Print_Option (`print_option`), ERC_FOB_Option (`fob_option`), Product_Category (`product_category`), WorkDescription (`description`) and Job_Description (`job_description`). Blank values are not sent. The order's Purchase order No. (External_Document_No) is left blank. Keep the `SalesOrder` web service published.
+
+## Daily BC -> HubSpot syncs (update only, never create)
+Three scheduled workflows run at midnight (Australia/Sydney). Each finds BC records changed in the last 25 hours, matches the HubSpot record by its BC number, and writes only properties that differ. BC wins; a blank BC value never clears HubSpot.
+- `nwi__bc-salesorders-to-hubspot-deals__v1.json`: sales orders -> deals (match `bc_order_id`).
+- `nwi__bc-customers-to-hubspot-companies__v1.json`: customers -> companies (match `business_central_id`).
+- `nwi__bc-contacts-to-hubspot-contacts__v1.json`: Person contacts -> contacts (match `business_central_record_id`).
