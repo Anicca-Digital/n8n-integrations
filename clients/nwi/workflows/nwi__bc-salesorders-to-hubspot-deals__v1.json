@@ -10,7 +10,7 @@
         -760
       ],
       "parameters": {
-        "content": "## NWI - BC Sales Orders -> HubSpot Deals (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (deals read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning remains on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file).\n3. Settings -> Timezone is Australia/Sydney, so *Every Day At Midnight* means midnight Sydney. Check it.\n4. BC web service **SalesOrder** (page 42) must stay published. Standard API `salesOrders` is used to find changed orders.\n5. HubSpot dropdowns `print_option`, `fob_option`, `product_category` must hold the same text as BC. A BC value HubSpot does not accept fails that batch (the error handler alerts; the run is safe to repeat).\n6. **Workflow Config** holds: lookback window (25h, one hour of overlap), batch size, and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC sales orders created or changed in the last 25 hours, reads them in batches, finds the matching deals by `bc_order_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. Deals are never created.\n**Safe to re-run:** it only writes values that differ.\n**API calls for N changed orders:** 1 BC list + N/50 BC reads + N/50 HubSpot searches + changed deals/100 HubSpot updates.",
+        "content": "## NWI - BC Sales Orders -> HubSpot Deals (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (deals read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning remains on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file).\n3. Settings -> Timezone is Australia/Sydney, so *Every Day At Midnight* means midnight Sydney. Check it.\n4. BC web service **SalesOrder** (page 42) must stay published. Standard API `salesOrders` is used to find changed orders.\n5. HubSpot dropdown `product_category` must hold the same text as BC. A BC value HubSpot does not accept fails that batch (the error handler alerts; the run is safe to repeat).\n6. **Workflow Config** holds: lookback window (25h, one hour of overlap), batch size, and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC sales orders created or changed in the last 25 hours, reads them in batches, finds the matching deals by `bc_order_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. Deals are never created.\n**Safe to re-run:** it only writes values that differ.\n**API calls for N changed orders:** 1 BC list + N/50 BC reads + N/50 HubSpot searches + changed deals/100 HubSpot updates.",
         "width": 760,
         "height": 520,
         "color": 5
@@ -132,7 +132,7 @@
             {
               "id": "4f711e06-d127-5293-8e13-3aa773fa2a38",
               "name": "fieldMap",
-              "value": "{\n  \"Order_Date\": \"order_date\",\n  \"Posting_Date\": \"posting_date\",\n  \"Requested_Delivery_Date\": \"requested_delivery_date\",\n  \"Document_Date\": \"document_date\",\n  \"Due_Date\": \"due_date\",\n  \"ERC_Print_Option\": \"print_option\",\n  \"ERC_FOB_Option\": \"fob_option\",\n  \"Product_Category\": \"product_category\",\n  \"WorkDescription\": \"description\",\n  \"Job_Description\": \"job_description\"\n}",
+              "value": "{\n  \"Order_Date\": \"order_date\",\n  \"Posting_Date\": \"posting_date\",\n  \"Requested_Delivery_Date\": \"requested_delivery_date\",\n  \"Document_Date\": \"document_date\",\n  \"Due_Date\": \"due_date\",\n  \"Product_Category\": \"product_category\",\n  \"WorkDescription\": \"description\",\n  \"Job_Description\": \"job_description\"\n}",
               "type": "object"
             }
           ]
@@ -282,7 +282,7 @@
             },
             {
               "name": "$select",
-              "value": "No,Order_Date,Posting_Date,Requested_Delivery_Date,Document_Date,Due_Date,ERC_Print_Option,ERC_FOB_Option,Product_Category,WorkDescription,Job_Description"
+              "value": "No,Order_Date,Posting_Date,Requested_Delivery_Date,Document_Date,Due_Date,Product_Category,WorkDescription,Job_Description"
             }
           ]
         },

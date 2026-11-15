@@ -67,9 +67,9 @@
     },
     {
       "parameters": {
-        "content": "## 4. Business Central contact = HubSpot CONTACT\nContact has a BC ID: find + update. No BC ID: create under the customer's company contact, then write the contact number to the contact's business_central_record_id. Finally set it as the customer's primary contact. Runs after the order, so a failure here never blocks the order.",
+        "content": "## 4. Business Central contact = HubSpot CONTACT\nContact has a BC ID: find + update. No BC ID: create under the customer's company contact, then write the contact number to the contact's business_central_record_id. Then set it as the customer's primary contact and as the sales order's contact. Runs after the order, so a failure here never blocks the order.",
         "height": 800,
-        "width": 2748,
+        "width": 2972,
         "color": 3
       },
       "name": "Section 4 - BC contact",
@@ -922,26 +922,6 @@
               }
             },
             {
-              "id": "8ecdcee4-89ed-5276-951c-8e7ac4b6f00d",
-              "leftValue": "={{ $('Get Deal').first().json.properties.print_option }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            },
-            {
-              "id": "dd855d5b-83e4-5658-ba84-bcd907aae4cd",
-              "leftValue": "={{ $('Get Deal').first().json.properties.fob_option }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            },
-            {
               "id": "d74b57be-eb88-528a-9934-436fd30cafe6",
               "leftValue": "={{ $('Get Deal').first().json.properties.product_category }}",
               "rightValue": "",
@@ -1606,6 +1586,50 @@
         }
       },
       "notes": "Sets Primary Contact No. so BC shows the contact as \"ERC Primary Contact Name\"."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/SalesOrder(Document_Type='Order',No='{{ $('Create BC Sales Order').first().json.number }}')",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Match",
+              "value": "*"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"Sell_to_Contact_No\": $('Contact Ready').first().json.contactNumber\n}) }}",
+        "options": {}
+      },
+      "name": "Set Sales Order Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7376,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "6bc4bba6-3a24-52e7-9b4b-bc20e6eeb2b5",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "YPXK2LmAIUaC2Fbb",
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "notes": "Links the BC contact to the sales order (BC fills in the contact name from the number). Runs last so a failure here never blocks the order or the contact."
     }
   ],
   "pinData": {},
@@ -2088,6 +2112,17 @@
         [
           {
             "node": "Set Primary Contact On Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Primary Contact On Customer": {
+      "main": [
+        [
+          {
+            "node": "Set Sales Order Contact",
             "type": "main",
             "index": 0
           }
