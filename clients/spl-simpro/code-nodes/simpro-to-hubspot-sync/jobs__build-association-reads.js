@@ -11,7 +11,12 @@ const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, 
 // over the same link. reconcile = keep matches, remove stale, add missing. addOnly = add missing, never remove.
 const LINKS = [
   { key: 'site', toType: 'site', mode: 'reconcile', desired: (r) => [r.Site?.ID] },
-  { key: 'contact', toType: 'contact', mode: 'reconcile', desired: (r) => [r.CustomerContact?.ID] },
+  // Primary contact (CustomerContact) carries SPL's "Decision Maker" label (USER_DEFINED, association ID 10, 1-to-many);
+  // the additional contacts are linked with NO label.
+  { key: 'contact', toType: 'contact', mode: 'reconcile',
+    desired: (r) => [r.CustomerContact?.ID, ...(r.AdditionalContacts ?? []).map(c => c.ID)],
+    primary: (r) => r.CustomerContact?.ID,
+    label: { types: [{ associationCategory: 'USER_DEFINED', associationTypeId: 10 }] } },
   { key: 'company', toType: 'company', mode: 'reconcile', desired: (r) => [r.Customer?.ID] },
 ];
 
@@ -44,20 +49,27 @@ if (missing.length) {
 }
 
 const desired = {}; // linkKey -> simproId -> [related simpro ids]
+const primary = {}; // linkKey -> simproId -> primary related simpro id (links with a label only)
 const needed = {};  // toType -> Set(related simpro ids)
 for (const l of LINKS) {
   desired[l.key] = {};
+  primary[l.key] = {};
   for (const r of records) {
     const ids = [...new Set((l.desired(r) ?? [])
       .filter(v => v !== undefined && v !== null && v !== '').map(String))];
     desired[l.key][String(r.ID)] = ids;
+    if (l.primary) {
+      const p = l.primary(r);
+      primary[l.key][String(r.ID)] = (p === undefined || p === null || p === '') ? null : String(p);
+    }
     for (const id of ids) { (needed[l.toType] = needed[l.toType] ?? new Set()).add(id); }
   }
 }
 const plan = {
   idMap,
   desired,
-  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),
+  primary,
+  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, label: l.label ?? null, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),
 };
 
 const requests = [];

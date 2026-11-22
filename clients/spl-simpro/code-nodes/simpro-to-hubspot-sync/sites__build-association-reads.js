@@ -45,20 +45,27 @@ if (missing.length) {
 }
 
 const desired = {}; // linkKey -> simproId -> [related simpro ids]
+const primary = {}; // linkKey -> simproId -> primary related simpro id (links with a label only)
 const needed = {};  // toType -> Set(related simpro ids)
 for (const l of LINKS) {
   desired[l.key] = {};
+  primary[l.key] = {};
   for (const r of records) {
     const ids = [...new Set((l.desired(r) ?? [])
       .filter(v => v !== undefined && v !== null && v !== '').map(String))];
     desired[l.key][String(r.ID)] = ids;
+    if (l.primary) {
+      const p = l.primary(r);
+      primary[l.key][String(r.ID)] = (p === undefined || p === null || p === '') ? null : String(p);
+    }
     for (const id of ids) { (needed[l.toType] = needed[l.toType] ?? new Set()).add(id); }
   }
 }
 const plan = {
   idMap,
   desired,
-  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),
+  primary,
+  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, label: l.label ?? null, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),
 };
 
 const requests = [];

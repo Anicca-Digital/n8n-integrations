@@ -1,5 +1,743 @@
 {
   "name": "[SPL] Simpro -> HubSpot (Real Time)",
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "77e7ff92-f10b-4cd8-9f4d-abd725d96777",
+  "meta": {
+    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
+  },
+  "nodeGroups": [],
+  "id": "wtmUVTe87Q45JLX1",
+  "tags": [],
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hubsput-upsert",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1400,
+        300
+      ],
+      "id": "9963dee0-7587-41aa-8f81-7ab87a7eed02",
+      "name": "Simpro Webhook",
+      "webhookId": "0bad2df5-757b-4635-9032-b3e68f718e7f",
+      "notesInFlow": true,
+      "notes": "Receives every Simpro webhook event (created, updated, status ...). Only a TEST record that is NOT yet in HubSpot is acted on. ⚠ No auth (known open finding, left as is)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Workflow Config   ([SPL] Simpro -> HubSpot (Real Time))\n// Single source of truth for this workflow: edit values HERE only.\n// It also turns the Simpro webhook event into \"which record type is this and where do I fetch it\".\n// An event for a record type we do not handle ends here on purpose (no item out).\nconst CONFIG = {\n  simproBaseUrl: 'https://spl.simprosuite.com/api/v1.0',\n  hubspotApiBase: 'https://api.hubapi.com',\n  // --- Test-record rule (do not loosen without asking SPL) ---\n  testNamePrefix: 'HS TEST - ', // sites, companies, jobs (name starts with this, not case-sensitive)\n  quoteNamePrefix: 'HS TEST - ', // quotes. NOTE: the Quotes sync workflow uses 'HSTEST-'; change this to match if wanted\n  contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'], // contacts: email domain (exact, not case-sensitive)\n  // --- HubSpot object paths, unique Simpro-ID properties and association API names ---\n  objects: {\n    site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id', assoc: '0-420' },\n    company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id', assoc: 'companies' },\n    contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id', assoc: 'contacts' },\n    quote: { path: 'crm/objects/2026-09/deals', idProperty: 'simpro_quote_id', assoc: 'deals' }, // a quote is a deal\n    job: { path: 'crm/objects/2026-09/deals', idProperty: 'simpro_job_id', assoc: 'deals' },\n  },\n  // --- Custom association labels (HubSpot user-defined) ---\n  decisionMaker: [{ associationCategory: 'USER_DEFINED', associationTypeId: 10 }], // primary contact on a quote/job deal\n  quoteJob: [{ associationCategory: 'USER_DEFINED', associationTypeId: 11 }], // label \"Job\" on the quote, \"Quote\" on the job; quote is the FROM side\n  // --- Quote deals ---\n  quote: {\n    pipeline: 'default',\n    stageToBeCompleted: '3788243436', // Quote to be completed / Quote overdue\n    stageWon: 'closedwon',\n    stageLost: 'closedlost',\n    stageDefault: '3788243437',\n    cfTenderNumber: 35, // Simpro custom field IDs\n    cfTenderStatus: 36,\n    cfVertical: 49,\n  },\n  // --- Job deals ---\n  job: {\n    pipeline: '2172954069',\n    stagePending: '3783391728',\n    stageProgress: '3783391729',\n    stageComplete: '3783391730',\n    stageArchived: '3783391734',\n    stageDefault: '3783391728',\n  },\n};\n\nconst body = $input.first().json.body ?? {};\nconst r = body.reference ?? {};\nconst ROUTES = {\n  'Site': { type: 'site', id: r.siteID, path: 'companies/' + r.companyID + '/sites/' + r.siteID },\n  'Company customer': { type: 'company', id: r.customerID, path: 'companies/0/customers/companies/' + r.customerID },\n  'Contact': { type: 'contact', id: r.contactID, path: 'companies/0/contacts/' + r.contactID },\n  'Quote': { type: 'quote', id: r.quoteID, path: 'companies/' + r.companyID + '/quotes/' + r.quoteID },\n  'Job': { type: 'job', id: r.jobID, path: 'companies/' + r.companyID + '/jobs/' + r.jobID },\n};\nconst route = ROUTES[body.name];\nif (!route || route.id === undefined || route.id === null) return []; // not a record type we handle\n\nreturn [{ json: {\n  ...CONFIG,\n  type: route.type,\n  simproId: String(route.id),\n  recordUrl: CONFIG.simproBaseUrl + '/' + route.path,\n  event: { name: body.name, action: body.action ?? null },\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1160,
+        300
+      ],
+      "id": "0008eba2-fb61-5313-864b-7cbc03857442",
+      "name": "Workflow Config",
+      "notesInFlow": true,
+      "notes": "All settings in one place. Turns the event into a record type + the Simpro URL. Event types we do not handle end here."
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "Type",
+              "value": "={{ $json.type }}"
+            },
+            {
+              "key": "id",
+              "value": "={{ $json.simproId }}"
+            },
+            {
+              "key": "Action",
+              "value": "={{ $json.event.action }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        -920,
+        300
+      ],
+      "id": "c91ad8e1-4031-5193-a5de-f46e92f6bac2",
+      "name": "Log Event",
+      "notesInFlow": true,
+      "notes": "Saves type, Simpro ID and action so runs are searchable in the Executions list."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.recordUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -680,
+        300
+      ],
+      "id": "048926bc-9d5c-52d5-bf4f-19fdf45a041f",
+      "name": "Get Simpro Record",
+      "notesInFlow": true,
+      "notes": "The full Simpro record. The only Simpro call for most events (non-test records stop right after it).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Select Test Record   ([SPL] Simpro -> HubSpot (Real Time))\n// Applies the test-record rule to the Simpro record that was just fetched. A record that is not a test record\n// ends here on purpose (no item out), so nothing else is called. Otherwise builds the HubSpot search that\n// answers \"is this record already in HubSpot?\" (a contact is also matched on email, see Check Is New).\nconst cfg = $('Workflow Config').first().json;\nconst rec = $input.first().json;\n\nlet isTest;\nif (cfg.type === 'contact') {\n  const email = String(rec.Email ?? '').trim().toLowerCase();\n  const domain = email.includes('@') ? email.split('@').pop() : '';\n  isTest = cfg.contactEmailDomains.map(d => String(d).trim().toLowerCase()).includes(domain);\n} else {\n  const name = String(rec.Name ?? rec.CompanyName ?? '').trim().toLowerCase();\n  const prefix = String(cfg.type === 'quote' ? cfg.quoteNamePrefix : cfg.testNamePrefix).toLowerCase();\n  isTest = name.startsWith(prefix);\n}\nif (!isTest) return [];\n\nconst o = cfg.objects[cfg.type];\nconst filterGroups = [{ filters: [{ propertyName: o.idProperty, operator: 'EQ', value: String(rec.ID) }] }];\nconst properties = [o.idProperty];\nif (cfg.type === 'contact') {\n  properties.push('email');\n  const email = String(rec.Email ?? '').trim().toLowerCase();\n  if (email) filterGroups.push({ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] });\n}\nreturn [{ json: { url: cfg.hubspotApiBase + '/' + o.path + '/search', body: { filterGroups, properties, limit: 5 } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        300
+      ],
+      "id": "ebfb71b3-139e-5541-8c1e-15f98678dd21",
+      "name": "Select Test Record",
+      "notesInFlow": true,
+      "notes": "Test-record rule. Not a test record = ends here, nothing else is called. Otherwise builds the HubSpot existence search."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -200,
+        300
+      ],
+      "id": "ab6b9140-8661-58e2-aac9-2fb79027dd7c",
+      "name": "Find in HubSpot",
+      "notesInFlow": true,
+      "notes": "Is this record already in HubSpot? Searches the unique Simpro ID property (a contact is also matched on email).",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Check Is New   ([SPL] Simpro -> HubSpot (Real Time))\n// Real Time only CREATES. A record that is already in HubSpot ends here on purpose (no item out): updates are\n// the job of the 30-minute sync workflows. A contact needs its email AND Simpro ID to match: a NEW Simpro contact\n// whose email already belongs to another HubSpot contact is not created or merged, the run fails loudly.\nconst cfg = $('Workflow Config').first().json;\nconst rec = $('Get Simpro Record').first().json;\nconst hits = $input.first().json.results;\nif (!Array.isArray(hits)) throw new Error('Unexpected HubSpot search response (no results array): ' + JSON.stringify($input.first().json).slice(0, 200));\nconst idProperty = cfg.objects[cfg.type].idProperty;\n\nif (cfg.type !== 'contact') {\n  return hits.length ? [] : [{ json: { isNew: true } }];\n}\nif (hits.some(h => String(h.properties && h.properties[idProperty]) === String(rec.ID))) return []; // already there\nif (hits.length) {\n  const other = hits[0];\n  throw new Error('Contact ' + rec.ID + ' (' + rec.Email + ') was NOT created: that email already belongs to HubSpot contact '\n    + other.id + ' (simpro_contact_id: ' + ((other.properties && other.properties[idProperty]) || 'none')\n    + '). Email and Simpro ID must match - resolve it in HubSpot, then re-run.');\n}\nreturn [{ json: { isNew: true } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        300
+      ],
+      "id": "8a721cf9-0eca-5b69-bbf3-b49a09e329a0",
+      "name": "Check Is New",
+      "notesInFlow": true,
+      "notes": "Already in HubSpot = ends here (updates belong to the 30-minute sync). A new contact whose email belongs to another HubSpot contact fails loudly."
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "eEgc6EYXSSxSkc8D",
+          "mode": "list",
+          "cachedResultName": "SPL Users",
+          "cachedResultUrl": "/projects/43dwW57ugUqGoEUE/datatables/eEgc6EYXSSxSkc8D"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        280,
+        300
+      ],
+      "id": "769fad58-4cc0-51f7-9e69-a380be1f9e7f",
+      "name": "Load SPL Users",
+      "notesInFlow": true,
+      "notes": "Reads the SPL Users table once (Simpro_ID -> HubSpot_ID) for deal owners. Only used by quotes and jobs.",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Create Request   ([SPL] Simpro -> HubSpot (Real Time))\n// Builds the ONE HubSpot create call for this record (same field mapping as the old Upsert sub-workflows and\n// the batch sync workflows) and the list of related records it should be linked to (`related`).\n//   related[].ids      Simpro IDs of the related records\n//   related[].primary  (labelled links only) the Simpro ID that gets the label; the other ids get NO label\n//   related[].label    HubSpot association type(s) used for the labelled link\n//   related[].quoteIsFrom  the related record is the FROM side of the labelled link (Quote -> Job)\nconst cfg = $('Workflow Config').first().json;\nconst rec = $('Get Simpro Record').first().json;\nconst blank = (v) => v === null || v === undefined || v === '' || v === 'null';\nconst keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => !blank(v)).map(([k, v]) => [k, String(v)]));\nconst ids = (arr) => [...new Set(arr.filter(v => !blank(v)).map(String))];\nconst day = (iso) => iso ? DateTime.fromISO(iso, { zone: 'utc' }).startOf('day').toMillis() : '';\nconst o = cfg.objects[cfg.type];\n\n// SPL Users data table (Simpro_ID -> HubSpot_ID), only used by quotes and jobs\nconst users = {};\nfor (const row of $input.all()) {\n  const j = row.json ?? {};\n  if (j.Simpro_ID !== undefined && j.Simpro_ID !== null) users[String(j.Simpro_ID)] = j.HubSpot_ID;\n}\n\nlet properties;\nlet related;\nswitch (cfg.type) {\n  case 'company':\n    properties = keep({\n      simpro_customer_id: rec.ID, name: rec.CompanyName,\n      address: rec.Address?.Address, city: rec.Address?.City, state: rec.Address?.State, zip: rec.Address?.PostalCode, country: rec.Address?.Country,\n      billing_address: rec.BillingAddress?.Address, billing_city: rec.BillingAddress?.City, billing_state: rec.BillingAddress?.State,\n      billing_zip: rec.BillingAddress?.PostalCode, billing_country: rec.BillingAddress?.Country,\n      phone: rec.Phone, website: rec.Website, email: rec.Email, abn: rec.EIN,\n    });\n    related = [\n      { key: 'contact', toType: 'contact', ids: ids((rec.Contacts ?? []).map(c => c.ID)) },\n      { key: 'site', toType: 'site', ids: ids((rec.Sites ?? []).map(s => s.ID)) },\n    ];\n    break;\n  case 'site':\n    properties = keep({\n      simpro_site_id: rec.ID, hs_name: rec.Name,\n      hs_address_1: rec.Address?.Address, hs_city: rec.Address?.City, hs_state_province: rec.Address?.State, hs_zip: rec.Address?.PostalCode,\n      country: rec.Address?.Country, zone: rec.Zone?.ID,\n      billing_address: rec.BillingAddress?.Address, billing_city: rec.BillingAddress?.City, billing_state: rec.BillingAddress?.State,\n      billing_postal_code: rec.BillingAddress?.PostalCode,\n    });\n    related = [\n      { key: 'company', toType: 'company', ids: ids((rec.Customers ?? []).map(c => c.ID)) },\n      { key: 'primaryContact', toType: 'contact', ids: ids([rec.PrimaryContact?.Contact?.ID]) },\n    ];\n    break;\n  case 'contact':\n    properties = keep({\n      simpro_contact_id: rec.ID, email: String(rec.Email ?? '').trim(),\n      firstname: rec.GivenName, lastname: rec.FamilyName, jobtitle: rec.Position, phone: rec.WorkPhone, salutation: rec.Title, department: rec.Department,\n    });\n    related = [\n      { key: 'company', toType: 'company', ids: ids((rec.Customers ?? []).map(c => c.ID)) },\n      { key: 'site', toType: 'site', ids: ids((rec.Sites ?? []).map(s => s.ID)) },\n    ];\n    break;\n  case 'quote': {\n    const d = cfg.quote;\n    const customField = (id) => (rec.CustomFields ?? []).find(f => f.CustomField?.ID === Number(id))?.Value ?? '';\n    const stages = { 'quote to be completed': d.stageToBeCompleted, 'quote overdue': d.stageToBeCompleted, 'quote won': d.stageWon, 'quote lost': d.stageLost };\n    const status = String(rec.Status?.Name ?? '').trim().toLowerCase();\n    // NOTE (carried over from [SPL] Upsert Quote in HubSpot): owner AND project manager are both looked up with ProjectManager.ID\n    const owner = users[String(rec.ProjectManager?.ID)];\n    properties = {\n      dealname: rec.Name, amount: rec.Total?.ExTax, description: rec.Notes ?? '', pipeline: d.pipeline,\n      dealstage: stages[status] ?? d.stageDefault, hubspot_owner_id: owner, project_manager: owner,\n      simpro_quote_id: String(rec.ID), approved_date: day(rec.DateApproved), due_date: day(rec.DueDate),\n      orderno: rec.OrderNo ?? '', validity: rec.ValidityDays ?? '', simpro_description: rec.Description ?? '',\n      project_tags: (rec.Tags ?? []).map(tag => tag.ID).join(';'),\n      tender_number: customField(d.cfTenderNumber), tender_status: customField(d.cfTenderStatus),\n      quote_type: rec.Type ?? '', vertical: customField(d.cfVertical),\n    };\n    related = [\n      { key: 'site', toType: 'site', ids: ids([rec.Site?.ID]) },\n      { key: 'contact', toType: 'contact', ids: ids([rec.CustomerContact?.ID, ...(rec.AdditionalContacts ?? []).map(c => c.ID)]), primary: blank(rec.CustomerContact?.ID) ? null : String(rec.CustomerContact.ID), label: cfg.decisionMaker },\n      { key: 'company', toType: 'company', ids: ids([rec.Customer?.ID]) },\n    ];\n    break;\n  }\n  case 'job': {\n    const d = cfg.job;\n    const stages = { pending: d.stagePending, progress: d.stageProgress, complete: d.stageComplete, archived: d.stageArchived };\n    const stageKey = String(rec.Stage ?? '').trim().toLowerCase();\n    properties = {\n      dealname: rec.Name, amount: rec.Total?.ExTax, description: rec.Notes ?? '', pipeline: d.pipeline,\n      dealstage: stages[stageKey] ?? d.stageDefault,\n      hubspot_owner_id: users[String(rec.Salesperson?.ID)], project_manager: users[String(rec.ProjectManager?.ID)],\n      simpro_job_id: String(rec.ID), approved_date: day(rec.DateApproved), due_date: day(rec.DueDate),\n      orderno: rec.OrderNo ?? '', simpro_description: rec.Description ?? '',\n      project_tags: (rec.Tags ?? []).map(tag => tag.ID).join(';'), job_type: rec.Type ?? '',\n    };\n    related = [\n      { key: 'site', toType: 'site', ids: ids([rec.Site?.ID]) },\n      { key: 'contact', toType: 'contact', ids: ids([rec.CustomerContact?.ID, ...(rec.AdditionalContacts ?? []).map(c => c.ID)]), primary: blank(rec.CustomerContact?.ID) ? null : String(rec.CustomerContact.ID), label: cfg.decisionMaker },\n      { key: 'company', toType: 'company', ids: ids([rec.Customer?.ID]) },\n      // the quote this job was converted from (a quote is a deal): Simpro ConvertedFromQuote.ID, or ConvertedFrom when its Type is Quote\n      { key: 'quote', toType: 'quote', ids: ids([rec.ConvertedFromQuote?.ID ?? (rec.ConvertedFrom?.Type === 'Quote' ? rec.ConvertedFrom.ID : undefined)]), label: cfg.quoteJob, quoteIsFrom: true },\n    ];\n    break;\n  }\n  default:\n    throw new Error('Unhandled record type: ' + cfg.type);\n}\n\nreturn [{ json: {\n  recordType: cfg.type,\n  fromObject: o.assoc,\n  url: cfg.hubspotApiBase + '/' + o.path,\n  body: { properties },\n  related: related.filter(x => x.ids.length > 0),\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ],
+      "id": "afd644c6-bb47-5ad7-80f6-86d4af60f657",
+      "name": "Build Create Request",
+      "notesInFlow": true,
+      "notes": "The ONE create call (field mapping per record type) plus the related records to link."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        760,
+        300
+      ],
+      "id": "58037c3c-df9a-5275-bb8e-9dd22190b25a",
+      "name": "Create Record in HubSpot",
+      "notesInFlow": true,
+      "notes": "Creates the record. No automatic retry: a create must never run twice.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Related Lookups   ([SPL] Simpro -> HubSpot (Real Time))\n// The record was just CREATED in HubSpot. Ask HubSpot, in one batch read per related type, which of the related\n// Simpro records already exist (by their unique Simpro ID property). Related records that are not in HubSpot are\n// NOT created here: they are skipped. No items out = nothing to link, the branch ends on purpose.\nconst cfg = $('Workflow Config').first().json;\nconst spec = $('Build Create Request').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst needed = {}; // toType -> Set(simpro ids)\nfor (const rel of spec.related) {\n  for (const id of rel.ids) (needed[rel.toType] = needed[rel.toType] ?? new Set()).add(id);\n}\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = cfg.objects[toType];\n  chunk([...set], 100).forEach((part, n) => requests.push({\n    url: cfg.hubspotApiBase + '/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nreturn requests.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        80
+      ],
+      "id": "65832570-7f44-55ee-a172-d577c9ceeff4",
+      "name": "Build Related Lookups",
+      "notesInFlow": true,
+      "notes": "Which related records already exist in HubSpot? One batch read per related type. None = ends."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1240,
+        80
+      ],
+      "id": "59709b19-d76d-5d4e-ba82-5968c3c9166d",
+      "name": "Look Up Related in HubSpot",
+      "notesInFlow": true,
+      "notes": "Batch read of the related records by their unique Simpro ID.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Associations   ([SPL] Simpro -> HubSpot (Real Time))\n// Links the newly created record to the related records that already exist in HubSpot. Related records that\n// are not in HubSpot are skipped and listed (`skipped` on the items and `skippedLinks` in the execution's custom\n// data, so it stays visible even when nothing is left to link). Nothing is ever removed or updated.\n//   plain links     -> batch associate (default, NO label)\n//   labelled links  -> batch create with the label: the primary contact of a quote/job gets \"Decision Maker\";\n//                      a job's quote link uses the Job/Quote label with the quote as the FROM side.\nconst cfg = $('Workflow Config').first().json;\nconst spec = $('Build Create Request').first().json;\nconst fromId = String($('Create Record in HubSpot').first().json.id);\nconst lookups = $('Build Related Lookups').all(); // the requests, in the order they were sent\nconst base = cfg.hubspotApiBase + '/crm/v4/associations/';\n\nconst found = {}; // toType -> { simproId: hubspotId }\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = lookups[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // none of this batch exists in HubSpot\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('HubSpot lookup of related ' + meta.toType + ' failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  found[meta.toType] = found[meta.toType] ?? {};\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[meta.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) found[meta.toType][String(sid)] = String(x.id);\n  }\n});\n\nconst skipped = [];\nconst requests = [];\nfor (const rel of spec.related) {\n  const toObject = cfg.objects[rel.toType].assoc;\n  const plain = [];\n  const labelled = [];\n  for (const id of rel.ids) {\n    const hs = found[rel.toType] ? found[rel.toType][id] : undefined;\n    if (!hs) { skipped.push({ link: rel.key, relatedSimproId: id, reason: 'not in HubSpot - link skipped' }); continue; }\n    if (rel.quoteIsFrom) labelled.push({ from: { id: hs }, to: { id: fromId }, types: rel.label });\n    else if (rel.label && id === rel.primary) labelled.push({ from: { id: fromId }, to: { id: hs }, types: rel.label });\n    else plain.push({ from: { id: fromId }, to: { id: hs } });\n  }\n  if (plain.length) requests.push({ url: base + spec.fromObject + '/' + toObject + '/batch/associate/default', body: { inputs: plain }, meta: { link: rel.key, kind: 'plain', count: plain.length } });\n  if (labelled.length) {\n    const pair = rel.quoteIsFrom ? 'deals/deals' : spec.fromObject + '/' + toObject;\n    requests.push({ url: base + pair + '/batch/create', body: { inputs: labelled }, meta: { link: rel.key, kind: 'labelled', count: labelled.length } });\n  }\n}\nif (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));\nreturn requests.map(r => ({ json: { ...r, skipped } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        80
+      ],
+      "id": "7b9716b5-a323-5f1d-8937-71404b003b4c",
+      "name": "Build Associations",
+      "notesInFlow": true,
+      "notes": "Plain links = no label. Quote/Job primary contact = Decision Maker. Job -> quote = Job/Quote label. Missing related records are skipped and listed."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1720,
+        80
+      ],
+      "id": "71be8462-39ca-59b8-8e7c-d350d3c132d2",
+      "name": "Create Associations in HubSpot",
+      "notesInFlow": true,
+      "notes": "Batch associate / batch create with labels. Idempotent, so it may retry.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Check Association Results   ([SPL] Simpro -> HubSpot (Real Time))\n// Batch associate/create answer 2xx even when single links are rejected (for example a label limit), so inspect\n// every response and fail loudly.\nconst errors = [];\nfor (const item of $input.all()) {\n  const b = item.json ?? {};\n  const errs = Array.isArray(b.errors) ? b.errors : [];\n  if (errs.length || Number(b.numErrors) > 0) {\n    errors.push(...errs.map(e => (e && (e.message || e.category)) || JSON.stringify(e)));\n    if (!errs.length) errors.push('numErrors=' + b.numErrors);\n  }\n}\nif (errors.length) throw new Error('HubSpot rejected part of the associations: ' + errors.slice(0, 5).join(' | '));\nreturn [{ json: { ok: true, calls: $input.all().length } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        80
+      ],
+      "id": "7017ee6b-51f6-5669-a119-7de30c02b5a0",
+      "name": "Check Association Results",
+      "notesInFlow": true,
+      "notes": "Fails loudly if HubSpot rejected part of a batch (for example a label limit)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Section Request   ([SPL] Simpro -> HubSpot (Real Time))\n// Quotes and jobs only: ask Simpro for the sections of the new quote/job (cost centers hang off sections).\n// Any other record type ends here on purpose (no item out).\nconst cfg = $('Workflow Config').first().json;\nif (cfg.type !== 'quote' && cfg.type !== 'job') return [];\nreturn [{ json: { url: cfg.recordUrl + '/sections/?pageSize=250' } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        520
+      ],
+      "id": "857911db-5e55-5c71-b427-5ae1c92c73ab",
+      "name": "Build Section Request",
+      "notesInFlow": true,
+      "notes": "Quotes and jobs only: asks Simpro for the sections (cost centers hang off sections). Others end here."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1240,
+        520
+      ],
+      "id": "4795faaf-1457-5509-bd73-d4d9e1d593e2",
+      "name": "Get Simpro Sections",
+      "notesInFlow": true,
+      "notes": "Simpro sections of the new quote/job.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Cost Center Requests   ([SPL] Simpro -> HubSpot (Real Time))\n// One request per Simpro section (this node only runs when there is at least one section).\nconst cfg = $('Workflow Config').first().json;\nconst requests = $input.all()\n  .map(i => i.json)\n  .filter(s => s && s.ID !== undefined && s.ID !== null)\n  .map(s => ({ json: { url: cfg.recordUrl + '/sections/' + s.ID + '/costCenters/?pageSize=250' } }));\nreturn requests; // none = no usable section, the branch ends on purpose\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        520
+      ],
+      "id": "5337a9dd-4011-5a49-b177-3c91b0c7772d",
+      "name": "Build Cost Center Requests",
+      "notesInFlow": true,
+      "notes": "One request per section."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1720,
+        520
+      ],
+      "id": "0e9db6e1-50b2-54f5-b6f9-0cbd9bf352aa",
+      "name": "Get Simpro Cost Centers",
+      "notesInFlow": true,
+      "notes": "Simpro cost centers, one call per section.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Line Items   ([SPL] Simpro -> HubSpot (Real Time))\n// One HubSpot line item per Simpro cost center, linked to the new deal. Same fields as the old sub-workflows,\n// but the price is the GST-EXCLUSIVE total (Total.ExTax). Batches of 100. No cost centers = the branch ends.\nconst cfg = $('Workflow Config').first().json;\nconst dealId = String($('Create Record in HubSpot').first().json.id);\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst costCenters = $input.all().map(i => i.json).filter(c => c && c.ID);\nconst inputs = costCenters.map(c => ({\n  properties: {\n    name: c.Name ?? c.CostCenter.Name,\n    quantity: '1',\n    price: c.Total.ExTax.toString(),\n    cost_centre: c.CostCenter.ID.toString(),\n    simpro_id: c.ID.toString(),\n  },\n  associations: [{ to: { id: dealId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 20 }] }],\n}));\nreturn chunk(inputs, 100).map((part, n) => ({\n  json: { url: cfg.hubspotApiBase + '/crm/objects/2026-09/line_items/batch/create', body: { inputs: part }, meta: { batch: n + 1, count: part.length } },\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        520
+      ],
+      "id": "06e0c27b-80ba-5923-a7c5-b80cead990e6",
+      "name": "Build Line Items",
+      "notesInFlow": true,
+      "notes": "One line item per cost center, price = GST-exclusive total, batches of 100."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2200,
+        520
+      ],
+      "id": "2305f8b8-d862-56bd-b694-e79f00d73337",
+      "name": "Create Line Items in HubSpot",
+      "notesInFlow": true,
+      "notes": "Batch create. No automatic retry: creates must never run twice.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Check Line Item Results   ([SPL] Simpro -> HubSpot (Real Time))\n// The batch create answers 2xx even when single line items are rejected, so inspect it and guard the count.\nconst sent = $('Build Line Items').all().reduce((n, i) => n + (i.json.meta ? i.json.meta.count : 0), 0);\nconst errors = [];\nlet created = 0;\nfor (const item of $input.all()) {\n  const b = item.json ?? {};\n  const errs = Array.isArray(b.errors) ? b.errors : [];\n  if (errs.length || Number(b.numErrors) > 0) {\n    errors.push(...errs.map(e => (e && (e.message || e.category)) || JSON.stringify(e)));\n    if (!errs.length) errors.push('numErrors=' + b.numErrors);\n  }\n  created += Array.isArray(b.results) ? b.results.length : 0;\n}\nif (errors.length) throw new Error('HubSpot rejected part of the line items: ' + errors.slice(0, 5).join(' | '));\nif (created !== sent) throw new Error('HubSpot created ' + created + ' line item(s) but ' + sent + ' were sent.');\nreturn [{ json: { lineItems: created } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        520
+      ],
+      "id": "bc30f8bf-2f6c-57cf-b0f9-a2af7f0600dd",
+      "name": "Check Line Item Results",
+      "notesInFlow": true,
+      "notes": "Inspects the batch response and guards the created count."
+    },
+    {
+      "parameters": {
+        "content": "## [SPL] Simpro -> HubSpot (Real Time): create and link only\nSelf-contained: no sub-workflows. The webhook is the only trigger.\n\n1. Fetch the Simpro record. Not a test record = stop.\n2. Already in HubSpot (by its unique Simpro ID) = stop. The 30-minute sync workflows own updates.\n3. Create it, then link it to the related records that ALREADY exist in HubSpot (never created or updated here):\n   - Quote/Job primary contact: label **Decision Maker**; additional contacts: no label\n   - Job -> the quote it was converted from: Job/Quote label (quote is the FROM side)\n4. Quote/Job: create the line items from the Simpro cost centers (GST-exclusive price).\n\n**After import (manual steps)**\n- Connect `SPL Simpro` and `SPL Account` on every credentialed node and confirm no 'not connected' warning remains.\n- Open `Load SPL Users`: it must read the SPL Users data table.\n- Set Settings > Error Workflow.\n- Import into the EXISTING workflow (select all, delete, import) so the `hubsput-upsert` webhook URL stays valid.\n\n⚠ The webhook has no authentication (known open finding).",
+        "height": 520,
+        "width": 760,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1400,
+        -360
+      ],
+      "id": "9c2e62ab-d18d-53f3-beff-c51caa0b57b6",
+      "name": "Overview and checklist"
+    },
+    {
+      "parameters": {
+        "content": "**Quotes and jobs only:** the row below creates the line items. For other record types `Build Section Request` returns nothing and the branch ends.",
+        "height": 120,
+        "width": 1000,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        740
+      ],
+      "id": "386b1da8-3ea8-5e67-a796-cdbd1fa25603",
+      "name": "Deals only note"
+    }
+  ],
+  "connections": {
+    "Simpro Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Log Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Event": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Record": {
+      "main": [
+        [
+          {
+            "node": "Select Test Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Test Record": {
+      "main": [
+        [
+          {
+            "node": "Find in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Check Is New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Is New": {
+      "main": [
+        [
+          {
+            "node": "Load SPL Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load SPL Users": {
+      "main": [
+        [
+          {
+            "node": "Build Create Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Create Request": {
+      "main": [
+        [
+          {
+            "node": "Create Record in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Record in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Build Related Lookups",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Section Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Related Lookups": {
+      "main": [
+        [
+          {
+            "node": "Look Up Related in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Related in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Build Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Associations": {
+      "main": [
+        [
+          {
+            "node": "Create Associations in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Associations in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Check Association Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Section Request": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Sections": {
+      "main": [
+        [
+          {
+            "node": "Build Cost Center Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cost Center Requests": {
+      "main": [
+        [
+          {
+            "node": "Get Simpro Cost Centers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Simpro Cost Centers": {
+      "main": [
+        [
+          {
+            "node": "Build Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Line Items": {
+      "main": [
+        [
+          {
+            "node": "Create Line Items in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Line Items in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Check Line Item Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
   "pinData": {
     "Simpro Webhook": [
       {
@@ -48,2332 +786,5 @@
         }
       }
     ]
-  },
-  "active": false,
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": true
-  },
-  "versionId": "77e7ff92-f10b-4cd8-9f4d-abd725d96777",
-  "meta": {
-    "instanceId": "da64b84e1f5030ee5a2ff37a4b6b94697bc61e84d9b136640982196daab83b38"
-  },
-  "nodeGroups": [],
-  "id": "wtmUVTe87Q45JLX1",
-  "tags": [],
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "hubsput-upsert",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
-      "position": [
-        -1184,
-        1300
-      ],
-      "id": "9963dee0-7587-41aa-8f81-7ab87a7eed02",
-      "name": "Simpro Webhook",
-      "webhookId": "0bad2df5-757b-4635-9032-b3e68f718e7f",
-      "notesInFlow": true,
-      "notes": "Receives every Simpro webhook event (created, updated, status ...). Only a test record that is NOT yet in HubSpot is acted on. ⚠ No auth (known open finding, left as is)."
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "xDlFrM8sGs5jbL0Z",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/xDlFrM8sGs5jbL0Z",
-          "cachedResultName": "[SPL] Check Simpro Test Record"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {},
-          "matchingColumns": [],
-          "schema": [],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {
-          "waitForSubWorkflow": true
-        }
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        -960,
-        1300
-      ],
-      "id": "7b4d531a-82d1-44c9-8e1e-981cae01c86d",
-      "name": "Check Test Record",
-      "notesInFlow": true,
-      "notes": "Sub-workflow [SPL] Check Simpro Test Record: fetches the Simpro record and returns the event plus isTestRecord. Re-select the sub-workflow here after importing it."
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "a4fe0640-281f-4f62-b30b-26cc89ceeb51",
-              "leftValue": "={{ String($json.isTestRecord === true) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "540adb6b-6cf3-49ab-90f5-65dc64ac4e5a",
-      "name": "Is HS Test Record",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        -736,
-        1300
-      ],
-      "notesInFlow": true,
-      "notes": "True → name starts with 'HS TEST - ', sync it. False → skip (nothing is written to HubSpot)."
-    },
-    {
-      "parameters": {},
-      "id": "08a3e431-8f00-4710-9d2f-bc0b34fd5369",
-      "name": "Skip Non-Test Record",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        -512,
-        1500
-      ],
-      "notesInFlow": true,
-      "notes": "The record name does not start with 'HS TEST - '. Ends here on purpose."
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.body.name }}",
-                    "rightValue": "Site",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "400d0e6b-56ac-4384-bc67-4c5363f64fbe"
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Site"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "e5175e84-9864-4f3d-8905-5c34bae48ffc",
-                    "leftValue": "={{ $json.body.name }}",
-                    "rightValue": "Company customer",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Customer"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "52b11787-01e9-43e6-b572-78e2b8d4a455",
-                    "leftValue": "={{ $json.body.name }}",
-                    "rightValue": "Contact",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Contact"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "19f7924a-3609-4fc7-a187-6964e72afd0c",
-                    "leftValue": "={{ $json.body.name }}",
-                    "rightValue": "Quote",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Quote"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "501a8887-20a1-4a18-8f6a-461e8d8d1eae",
-                    "leftValue": "={{ $json.body.name }}",
-                    "rightValue": "Job",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Job"
-            }
-          ]
-        },
-        "options": {
-          "fallbackOutput": "extra"
-        }
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
-      "position": [
-        -512,
-        1300
-      ],
-      "id": "a0964a15-a9b9-4075-865b-c3e245b89635",
-      "name": "Route by Simpro Event",
-      "notesInFlow": true,
-      "notes": "Routes on body.name. Events with any other name are dropped silently (no fallback output)."
-    },
-    {
-      "parameters": {
-        "dataToSave": {
-          "values": [
-            {
-              "key": "id",
-              "value": "={{ $json.body.reference.siteID }}"
-            },
-            {
-              "key": "Type",
-              "value": "={{ $json.body.name }}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executionData",
-      "typeVersion": 1.1,
-      "position": [
-        -256,
-        400
-      ],
-      "id": "e2050cbd-e0cd-479e-b5ec-13bd57b60b88",
-      "name": "Log Site Event",
-      "notesInFlow": true,
-      "notes": "Saves Simpro site ID + event type to execution data so runs are searchable in the Executions list."
-    },
-    {
-      "parameters": {
-        "dataToSave": {
-          "values": [
-            {
-              "key": "id",
-              "value": "={{ $json.body.reference.customerID }}"
-            },
-            {
-              "key": "Type",
-              "value": "={{ $json.body.name }}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executionData",
-      "typeVersion": 1.1,
-      "position": [
-        -256,
-        850
-      ],
-      "id": "460a7d1f-bfe9-4644-bfaa-e9d76c864cdf",
-      "name": "Log Customer Event",
-      "notesInFlow": true,
-      "notes": "Saves Simpro customer ID + event type to execution data."
-    },
-    {
-      "parameters": {
-        "dataToSave": {
-          "values": [
-            {
-              "key": "id",
-              "value": "={{ $json.body.reference.contactID }}"
-            },
-            {
-              "key": "Type",
-              "value": "={{ $json.body.name }}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executionData",
-      "typeVersion": 1.1,
-      "position": [
-        -256,
-        1300
-      ],
-      "id": "9956183e-014d-4ea3-a3d1-2d18ac8de720",
-      "name": "Log Contact Event",
-      "notesInFlow": true,
-      "notes": "Saves Simpro contact ID + event type to execution data."
-    },
-    {
-      "parameters": {
-        "dataToSave": {
-          "values": [
-            {
-              "key": "id",
-              "value": "={{ $json.body.reference.quoteID }}"
-            },
-            {
-              "key": "Type",
-              "value": "={{ $json.body.name }}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executionData",
-      "typeVersion": 1.1,
-      "position": [
-        -256,
-        1750
-      ],
-      "id": "6b47b7bb-ca95-4e25-8e74-d27198d54352",
-      "name": "Log Quote Event",
-      "notesInFlow": true,
-      "notes": "Saves Simpro quote ID + event type to execution data."
-    },
-    {
-      "parameters": {
-        "dataToSave": {
-          "values": [
-            {
-              "key": "id",
-              "value": "={{ $json.body.reference.jobID }}"
-            },
-            {
-              "key": "Type",
-              "value": "={{ $json.body.name }}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executionData",
-      "typeVersion": 1.1,
-      "position": [
-        -256,
-        2200
-      ],
-      "id": "35e75826-2cf9-4713-8e07-4373055c8e01",
-      "name": "Log Job Event",
-      "notesInFlow": true,
-      "notes": "Saves Simpro job ID + event type to execution data."
-    },
-    {
-      "parameters": {
-        "url": "=https://spl.simprosuite.com/api/v1.0/companies/{{ $('Log Site Event').first().json.body.reference.companyID }}/sites/{{ $('Log Site Event').first().json.body.reference.siteID }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        416,
-        400
-      ],
-      "id": "0726a5c9-1815-4fc4-bd4e-e55222d9ce34",
-      "name": "Get Simpro Site",
-      "notesInFlow": true,
-      "credentials": {
-        "oAuth2Api": {
-          "id": "71p2Ps2oLXhe27mr",
-          "name": "SPL Simpro"
-        }
-      },
-      "notes": "Fetches the full Site from Simpro (incl. Customers[] and PrimaryContact) — the webhook only carries the ID."
-    },
-    {
-      "parameters": {
-        "url": "=https://spl.simprosuite.com/api/v1.0/companies/0/customers/companies/{{ $('Log Customer Event').first().json.body.reference.customerID }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        416,
-        850
-      ],
-      "id": "5511bb02-1e67-41ca-b3f3-71ec2f2cfc95",
-      "name": "Get Simpro Customer",
-      "notesInFlow": true,
-      "credentials": {
-        "oAuth2Api": {
-          "id": "71p2Ps2oLXhe27mr",
-          "name": "SPL Simpro"
-        }
-      },
-      "notes": "Fetches the full Company customer from Simpro (incl. Contacts[] and Sites[])."
-    },
-    {
-      "parameters": {
-        "url": "=https://spl.simprosuite.com/api/v1.0/companies/0/contacts/{{ $('Log Contact Event').first().json.body.reference.contactID }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        416,
-        1300
-      ],
-      "id": "07ba95e2-305f-4bd9-a133-67f458069882",
-      "name": "Get Simpro Contact",
-      "notesInFlow": true,
-      "credentials": {
-        "oAuth2Api": {
-          "id": "71p2Ps2oLXhe27mr",
-          "name": "SPL Simpro"
-        }
-      },
-      "notes": "Fetches the full Contact from Simpro (incl. Customers[] and Sites[])."
-    },
-    {
-      "parameters": {
-        "url": "=https://spl.simprosuite.com/api/v1.0/companies/{{ $('Log Quote Event').first().json.body.reference.companyID }}/quotes/{{ $('Log Quote Event').first().json.body.reference.quoteID }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        416,
-        1750
-      ],
-      "id": "c413866d-2ad3-4372-9145-9b1ded46f116",
-      "name": "Get Simpro Quote",
-      "notesInFlow": true,
-      "credentials": {
-        "oAuth2Api": {
-          "id": "71p2Ps2oLXhe27mr",
-          "name": "SPL Simpro"
-        }
-      },
-      "notes": "Fetches the full Quote from Simpro using companyID from the webhook (incl. Site, Customer, CustomerContact)."
-    },
-    {
-      "parameters": {
-        "url": "=https://spl.simprosuite.com/api/v1.0/companies/{{ $('Log Job Event').first().json.body.reference.companyID }}/jobs/{{ $('Log Job Event').first().json.body.reference.jobID }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        416,
-        2200
-      ],
-      "id": "402b8ef3-1fe2-4f41-93fa-2c7cb0176338",
-      "name": "Get Simpro Job",
-      "notesInFlow": true,
-      "credentials": {
-        "oAuth2Api": {
-          "id": "71p2Ps2oLXhe27mr",
-          "name": "SPL Simpro"
-        }
-      },
-      "notes": "Fetches the full Job from Simpro using companyID from the webhook (incl. Site, Customer, CustomerContact)."
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "P99kOJdNNrZklIsq",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/P99kOJdNNrZklIsq",
-          "cachedResultName": "[SPL] Upsert Site in HubSpot"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "simpro_site_id": "={{ $json.ID.toString() }}"
-          },
-          "matchingColumns": [
-            "simpro_site_id"
-          ],
-          "schema": [
-            {
-              "id": "simpro_site_id",
-              "displayName": "simpro_site_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string",
-              "removed": false
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {
-          "waitForSubWorkflow": true
-        }
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        640,
-        400
-      ],
-      "id": "1c92d608-dcfa-4355-a57c-4e9bd85c8ae0",
-      "name": "Upsert Site in HubSpot",
-      "notesInFlow": true,
-      "notes": "Sub-workflow: creates/updates the HubSpot Site (0-420) keyed on simpro_site_id. Returns the HubSpot record (id)."
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "kMA8eBX2fHYjhbAI",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/kMA8eBX2fHYjhbAI",
-          "cachedResultName": "[SPL] Upsert Company in HubSpot"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "simpro_customer_id": "={{ $json.ID.toString() }}"
-          },
-          "matchingColumns": [
-            "simpro_customer_id"
-          ],
-          "schema": [
-            {
-              "id": "simpro_customer_id",
-              "displayName": "simpro_customer_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string",
-              "removed": false
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        640,
-        850
-      ],
-      "id": "5f455e1a-573f-4d3a-a9a7-d4f05d615d49",
-      "name": "Upsert Company in HubSpot",
-      "notesInFlow": true,
-      "notes": "Sub-workflow: creates/updates the HubSpot Company keyed on simpro_customer_id with address, billing and contact details."
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "5caBn6ptLfhDhO1L",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/5caBn6ptLfhDhO1L",
-          "cachedResultName": "[SPL] Upsert Contact in HubSpot"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "simpro_contact_id": "={{ $('Get Simpro Contact').first().json.ID }}"
-          },
-          "matchingColumns": [
-            "simpro_contact_id"
-          ],
-          "schema": [
-            {
-              "id": "simpro_contact_id",
-              "displayName": "simpro_contact_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "number",
-              "removed": false
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        1088,
-        1300
-      ],
-      "id": "e21f6bb8-846f-44f1-8fee-7d099e469b61",
-      "name": "Upsert Contact in HubSpot",
-      "notesInFlow": true,
-      "notes": "Sub-workflow: creates/updates the HubSpot Contact keyed on simpro_contact_id."
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "yveJlP2ErUtdjUQd",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/yveJlP2ErUtdjUQd",
-          "cachedResultName": "[SPL] Upsert Quote in HubSpot"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "simpro_quote_id": "={{ $('Simpro Webhook').item.json.body.reference.quoteID.toString() }}",
-            "simpro_company_id": "={{ $('Simpro Webhook').item.json.body.reference.companyID.toString() }}"
-          },
-          "matchingColumns": [],
-          "schema": [
-            {
-              "id": "simpro_quote_id",
-              "displayName": "simpro_quote_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "simpro_company_id",
-              "displayName": "simpro_company_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        640,
-        1750
-      ],
-      "id": "47ba6751-0c02-47b7-9db1-23cefcbd323a",
-      "name": "Upsert Quote Deal in HubSpot",
-      "notesInFlow": true,
-      "notes": "Sub-workflow: creates/updates the HubSpot Deal for this quote. Returns dealId, used by all three branches below."
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "0L9hGb93c3GcRL2B",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/0L9hGb93c3GcRL2B",
-          "cachedResultName": "[SPL] Upsert Job in HubSpot"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "simpro_job_id": "={{ $('Simpro Webhook').item.json.body.reference.jobID.toString() }}",
-            "simpro_company_id": "={{ $('Simpro Webhook').item.json.body.reference.companyID.toString()}}"
-          },
-          "matchingColumns": [],
-          "schema": [
-            {
-              "id": "simpro_job_id",
-              "displayName": "simpro_job_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "simpro_company_id",
-              "displayName": "simpro_company_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        640,
-        2200
-      ],
-      "id": "0151a9ff-692f-46d1-be42-a1d8b1033221",
-      "name": "Upsert Job Deal in HubSpot",
-      "notesInFlow": true,
-      "notes": "Sub-workflow: creates/updates the HubSpot Deal for this job. Returns dealId, used by all three branches below."
-    },
-    {
-      "parameters": {
-        "content": "## 🏗 Site event\nNew Site only: create it, then link it to the companies and primary contact that already exist in HubSpot.",
-        "height": 300,
-        "width": 3600,
-        "color": 7
-      },
-      "id": "84c1b54c-2a62-4427-8010-e0453ff11a88",
-      "name": "Band - Site",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -296,
-        270
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 🏢 Company customer event\nNew company only: create it, then link it to the contacts and sites that already exist in HubSpot.",
-        "height": 300,
-        "width": 3600,
-        "color": 6
-      },
-      "id": "c01b1d13-26ba-492f-bd7a-21cdd18dde4d",
-      "name": "Band - Customer",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -296,
-        720
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 👤 Contact event\nNew contact only (email and Simpro ID must match): create it, then link it to the companies and sites that already exist in HubSpot.",
-        "height": 300,
-        "width": 3600,
-        "color": 4
-      },
-      "id": "8bd5c3ff-3f09-4c67-a21a-c042c67018b1",
-      "name": "Band - Contact",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -296,
-        1170
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 📄 Quote event\nNew quote only: create the deal and its line items, then link it to its site, contact and company if they exist in HubSpot.",
-        "height": 300,
-        "width": 3600,
-        "color": 2
-      },
-      "id": "d76cc1a6-ae76-4b66-98b9-392939d864b5",
-      "name": "Band - Quote",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -296,
-        1620
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 🔧 Job event\nNew job only: create the deal and its line items, then link it to its site, contact and company, and to the quote it was converted from (label Job on the quote, Quote on the job), if they exist in HubSpot.",
-        "height": 300,
-        "width": 3600
-      },
-      "id": "93d2c79a-6423-4fa3-ad73-15782b97eaa2",
-      "name": "Band - Job",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -296,
-        2070
-      ]
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        -256,
-        1500
-      ],
-      "id": "b8a43e6d-b2ee-5e94-8290-19805f477ef5",
-      "name": "Already In HubSpot - Skip",
-      "notesInFlow": true,
-      "notes": "The record already exists in HubSpot, so Real Time does nothing. Updates are handled by the 30-minute sync workflows."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/crm/objects/2026-09/0-420/search",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ ({\n  filterGroups: [ { filters: [ { propertyName: 'simpro_site_id', operator: 'EQ', value: String($json.body.reference.siteID) } ] } ],\n  properties: ['simpro_site_id'],\n  limit: 1,\n}) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -32,
-        400
-      ],
-      "id": "7cbd450f-a98d-53ea-a659-592c4c62cd93",
-      "name": "Find Site in HubSpot",
-      "notesInFlow": true,
-      "notes": "Is this site already in HubSpot? Searches the unique simpro_site_id.",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "1c208756-c2cd-58c8-96e3-5e75cf734850",
-              "leftValue": "={{ String(Array.isArray($json.results) && $json.results.length === 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        192,
-        400
-      ],
-      "id": "14ef1096-a37d-5ed4-b68a-8336f93fc4d0",
-      "name": "Is New Site?",
-      "notesInFlow": true,
-      "notes": "True: not in HubSpot yet, go on and create it. False: already there, do nothing."
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Site Related Lookups   ([SPL] Simpro -> HubSpot (Real Time))\n// The Site was just CREATED in HubSpot. Work out which related Simpro records it should link to (LINKS)\n// and ask HubSpot, in one batch read per related type, which of them already exist (by the unique\n// Simpro ID property). Related records that are not in HubSpot are NOT created here - they are skipped.\n// Returns no items when there is nothing to link, which ends the branch on purpose.\nconst record = $('Get Simpro Site').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst LINKS = [\n  { key: 'company', toType: 'company', desired: (r) => (r.Customers ?? []).map(c => c.ID) },\n  { key: 'primaryContact', toType: 'contact', desired: (r) => [r.PrimaryContact?.Contact?.ID] },\n];\n\nconst OBJECTS = {\n  company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },\n  contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },\n  site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },\n};\n\nconst needed = {}; // toType -> Set(related simpro ids)\nfor (const l of LINKS) {\n  for (const id of (l.desired(record) ?? [])) {\n    if (id === undefined || id === null || id === '') continue;\n    (needed[l.toType] = needed[l.toType] ?? new Set()).add(String(id));\n  }\n}\n\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = OBJECTS[toType];\n  chunk([...set], 100).forEach((part, n) => requests.push({\n    url: 'https://api.hubapi.com/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nreturn requests.map(r => ({ json: r }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        864,
-        400
-      ],
-      "id": "e2738f5c-4968-5d52-aac4-09efc54bd867",
-      "name": "Build Site Related Lookups",
-      "notesInFlow": true,
-      "notes": "Which related records does this new site link to? Batch-reads them by Simpro ID. None = nothing to link, branch ends."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "neverError": true
-            }
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1088,
-        400
-      ],
-      "id": "653f8be6-b7b6-5a24-ae53-2738cdc6d71d",
-      "name": "Look Up Site Related in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch read of the related records that already exist in HubSpot.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Site Associations   ([SPL] Simpro -> HubSpot (Real Time))\n// Links the newly created Site to the related records that already exist in HubSpot (one batch call per\n// link type, default association). Related records not in HubSpot are skipped and listed in `skipped`\n// so they are visible in the execution. Nothing is ever removed or updated here.\nconst record = $('Get Simpro Site').first().json;\nconst fromId = String($('Upsert Site in HubSpot').first().json.id);\nconst lookups = $('Build Site Related Lookups').all(); // the requests, in the order they were sent\n\nconst LINKS = [\n  { key: 'company', toType: 'company', desired: (r) => (r.Customers ?? []).map(c => c.ID) },\n  { key: 'primaryContact', toType: 'contact', desired: (r) => [r.PrimaryContact?.Contact?.ID] },\n];\n\nconst OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420' };\n\nconst found = {}; // toType -> { simproId: hubspotId }\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = lookups[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // none of this batch exists in HubSpot\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('HubSpot lookup of related ' + meta.toType + ' failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  found[meta.toType] = found[meta.toType] ?? {};\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[meta.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) found[meta.toType][String(sid)] = String(x.id);\n  }\n});\n\nconst skipped = [];\nconst requests = [];\nfor (const l of LINKS) {\n  const inputs = [];\n  for (const relatedId of [...new Set((l.desired(record) ?? []).filter(v => v !== undefined && v !== null && v !== '').map(String))]) {\n    const hs = found[l.toType] ? found[l.toType][relatedId] : undefined;\n    if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });\n    else skipped.push({ link: l.key, relatedSimproId: relatedId, reason: 'not in HubSpot - link skipped' });\n  }\n  if (inputs.length) {\n    requests.push({\n      url: 'https://api.hubapi.com/crm/v4/associations/0-420/' + OBJECTS[l.toType] + '/batch/associate/default',\n      body: { inputs },\n      meta: { link: l.key, count: inputs.length },\n    });\n  }\n}\n// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).\nif (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));\nreturn requests.map(r => ({ json: { ...r, skipped } }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1312,
-        400
-      ],
-      "id": "3406b0d7-0c18-5964-a029-b43a474440aa",
-      "name": "Build Site Associations",
-      "notesInFlow": true,
-      "notes": "Builds one batch-associate call per link type. Related records not in HubSpot are skipped and listed under `skipped`."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1536,
-        400
-      ],
-      "id": "e533bcd3-2c18-5820-b420-6180ec92a6a4",
-      "name": "Create Site Associations in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch-associate (default association). Idempotent, so it may retry.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/crm/objects/2026-09/companies/search",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ ({\n  filterGroups: [ { filters: [ { propertyName: 'simpro_customer_id', operator: 'EQ', value: String($json.body.reference.customerID) } ] } ],\n  properties: ['simpro_customer_id'],\n  limit: 1,\n}) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -32,
-        850
-      ],
-      "id": "96fd9487-7f69-54f4-a792-8cc24d219564",
-      "name": "Find Company in HubSpot",
-      "notesInFlow": true,
-      "notes": "Is this company already in HubSpot? Searches the unique simpro_customer_id.",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "25e88c6c-4695-5632-94cf-26753901cbc5",
-              "leftValue": "={{ String(Array.isArray($json.results) && $json.results.length === 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        192,
-        850
-      ],
-      "id": "45dee5b6-e4fc-58da-bdf4-ecd2e590488b",
-      "name": "Is New Company?",
-      "notesInFlow": true,
-      "notes": "True: not in HubSpot yet, go on and create it. False: already there, do nothing."
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Company Related Lookups   ([SPL] Simpro -> HubSpot (Real Time))\n// The Company was just CREATED in HubSpot. Work out which related Simpro records it should link to (LINKS)\n// and ask HubSpot, in one batch read per related type, which of them already exist (by the unique\n// Simpro ID property). Related records that are not in HubSpot are NOT created here - they are skipped.\n// Returns no items when there is nothing to link, which ends the branch on purpose.\nconst record = $('Get Simpro Customer').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst LINKS = [\n  { key: 'contact', toType: 'contact', desired: (r) => (r.Contacts ?? []).map(c => c.ID) },\n  { key: 'site', toType: 'site', desired: (r) => (r.Sites ?? []).map(s => s.ID) },\n];\n\nconst OBJECTS = {\n  company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },\n  contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },\n  site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },\n};\n\nconst needed = {}; // toType -> Set(related simpro ids)\nfor (const l of LINKS) {\n  for (const id of (l.desired(record) ?? [])) {\n    if (id === undefined || id === null || id === '') continue;\n    (needed[l.toType] = needed[l.toType] ?? new Set()).add(String(id));\n  }\n}\n\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = OBJECTS[toType];\n  chunk([...set], 100).forEach((part, n) => requests.push({\n    url: 'https://api.hubapi.com/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nreturn requests.map(r => ({ json: r }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        864,
-        850
-      ],
-      "id": "2d640b7e-deec-5163-b905-4c410f7c1cfb",
-      "name": "Build Company Related Lookups",
-      "notesInFlow": true,
-      "notes": "Which related records does this new company link to? Batch-reads them by Simpro ID. None = nothing to link, branch ends."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "neverError": true
-            }
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1088,
-        850
-      ],
-      "id": "f3564b61-326b-581e-8207-502c04bf5e14",
-      "name": "Look Up Company Related in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch read of the related records that already exist in HubSpot.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Company Associations   ([SPL] Simpro -> HubSpot (Real Time))\n// Links the newly created Company to the related records that already exist in HubSpot (one batch call per\n// link type, default association). Related records not in HubSpot are skipped and listed in `skipped`\n// so they are visible in the execution. Nothing is ever removed or updated here.\nconst record = $('Get Simpro Customer').first().json;\nconst fromId = String($('Upsert Company in HubSpot').first().json.id);\nconst lookups = $('Build Company Related Lookups').all(); // the requests, in the order they were sent\n\nconst LINKS = [\n  { key: 'contact', toType: 'contact', desired: (r) => (r.Contacts ?? []).map(c => c.ID) },\n  { key: 'site', toType: 'site', desired: (r) => (r.Sites ?? []).map(s => s.ID) },\n];\n\nconst OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420' };\n\nconst found = {}; // toType -> { simproId: hubspotId }\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = lookups[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // none of this batch exists in HubSpot\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('HubSpot lookup of related ' + meta.toType + ' failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  found[meta.toType] = found[meta.toType] ?? {};\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[meta.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) found[meta.toType][String(sid)] = String(x.id);\n  }\n});\n\nconst skipped = [];\nconst requests = [];\nfor (const l of LINKS) {\n  const inputs = [];\n  for (const relatedId of [...new Set((l.desired(record) ?? []).filter(v => v !== undefined && v !== null && v !== '').map(String))]) {\n    const hs = found[l.toType] ? found[l.toType][relatedId] : undefined;\n    if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });\n    else skipped.push({ link: l.key, relatedSimproId: relatedId, reason: 'not in HubSpot - link skipped' });\n  }\n  if (inputs.length) {\n    requests.push({\n      url: 'https://api.hubapi.com/crm/v4/associations/companies/' + OBJECTS[l.toType] + '/batch/associate/default',\n      body: { inputs },\n      meta: { link: l.key, count: inputs.length },\n    });\n  }\n}\n// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).\nif (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));\nreturn requests.map(r => ({ json: { ...r, skipped } }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1312,
-        850
-      ],
-      "id": "71b48392-ee7d-568a-bf98-04bbb7bb8b6f",
-      "name": "Build Company Associations",
-      "notesInFlow": true,
-      "notes": "Builds one batch-associate call per link type. Related records not in HubSpot are skipped and listed under `skipped`."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1536,
-        850
-      ],
-      "id": "4052f79b-d415-5991-93ec-502047558008",
-      "name": "Create Company Associations in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch-associate (default association). Idempotent, so it may retry.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/crm/objects/2026-09/contacts/search",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ ({\n  filterGroups: [ { filters: [ { propertyName: 'simpro_contact_id', operator: 'EQ', value: String($json.body.reference.contactID) } ] } ],\n  properties: ['simpro_contact_id'],\n  limit: 1,\n}) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -32,
-        1300
-      ],
-      "id": "9b2eb686-02cf-5c81-9908-7e5c0c2bedf3",
-      "name": "Find Contact in HubSpot",
-      "notesInFlow": true,
-      "notes": "Is this contact already in HubSpot? Searches the unique simpro_contact_id.",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "ce28f91f-efff-5fe9-b509-7eb0ae535401",
-              "leftValue": "={{ String(Array.isArray($json.results) && $json.results.length === 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        192,
-        1300
-      ],
-      "id": "561efe6f-7e9b-5af7-a094-1d6a29c11b35",
-      "name": "Is New Contact?",
-      "notesInFlow": true,
-      "notes": "True: not in HubSpot yet, go on and create it. False: already there, do nothing."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/crm/objects/2026-09/contacts/search",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ ({\n  filterGroups: [ { filters: [ { propertyName: 'email', operator: 'EQ', value: String($('Get Simpro Contact').first().json.Email ?? '').trim().toLowerCase() } ] } ],\n  properties: ['email', 'simpro_contact_id'],\n  limit: 1,\n}) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        640,
-        1300
-      ],
-      "id": "3aee2fea-b6b0-5149-87e7-3c981ff7bd8a",
-      "name": "Find Contact by Email in HubSpot",
-      "notesInFlow": true,
-      "notes": "Does a HubSpot contact already use this email? Email and Simpro ID must match, so a different owner of the email blocks the create.",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "bf482d5c-a0ac-5c58-8125-9369149627f3",
-              "leftValue": "={{ String(Array.isArray($json.results) && $json.results.length === 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        864,
-        1300
-      ],
-      "id": "9469b156-a70c-5ca1-8b19-379bbf737863",
-      "name": "Is Email Free?",
-      "notesInFlow": true,
-      "notes": "True: no HubSpot contact uses this email, create the contact. False: the email belongs to another contact - report it."
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Report Email Conflict   ([SPL] Simpro -> HubSpot (Real Time))\n// A NEW Simpro contact whose email already belongs to a HubSpot contact is NOT created or merged:\n// the email and the Simpro ID must match. Fail loudly so the error workflow can alert, then fix it in HubSpot.\nconst hit = ($input.first().json.results ?? [])[0] ?? {};\nconst c = $('Get Simpro Contact').first().json;\nthrow new Error('Contact ' + c.ID + ' (' + c.Email + ') was NOT created: that email already belongs to HubSpot contact '\n  + hit.id + ' (simpro_contact_id: ' + ((hit.properties && hit.properties.simpro_contact_id) || 'none')\n  + '). Email and Simpro ID must match - resolve it in HubSpot, then re-run.');\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1088,
-        1500
-      ],
-      "id": "59ab8233-ce75-5bab-9618-dbf0db1c7b83",
-      "name": "Report Email Conflict",
-      "notesInFlow": true,
-      "notes": "Fails the run on purpose (error workflow alerts): the email belongs to another HubSpot contact."
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Contact Related Lookups   ([SPL] Simpro -> HubSpot (Real Time))\n// The Contact was just CREATED in HubSpot. Work out which related Simpro records it should link to (LINKS)\n// and ask HubSpot, in one batch read per related type, which of them already exist (by the unique\n// Simpro ID property). Related records that are not in HubSpot are NOT created here - they are skipped.\n// Returns no items when there is nothing to link, which ends the branch on purpose.\nconst record = $('Get Simpro Contact').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst LINKS = [\n  { key: 'company', toType: 'company', desired: (r) => (r.Customers ?? []).map(c => c.ID) },\n  { key: 'site', toType: 'site', desired: (r) => (r.Sites ?? []).map(s => s.ID) },\n];\n\nconst OBJECTS = {\n  company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },\n  contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },\n  site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },\n};\n\nconst needed = {}; // toType -> Set(related simpro ids)\nfor (const l of LINKS) {\n  for (const id of (l.desired(record) ?? [])) {\n    if (id === undefined || id === null || id === '') continue;\n    (needed[l.toType] = needed[l.toType] ?? new Set()).add(String(id));\n  }\n}\n\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = OBJECTS[toType];\n  chunk([...set], 100).forEach((part, n) => requests.push({\n    url: 'https://api.hubapi.com/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nreturn requests.map(r => ({ json: r }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1312,
-        1300
-      ],
-      "id": "65f2b5d2-fe74-5161-9415-599b4c58f352",
-      "name": "Build Contact Related Lookups",
-      "notesInFlow": true,
-      "notes": "Which related records does this new contact link to? Batch-reads them by Simpro ID. None = nothing to link, branch ends."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "neverError": true
-            }
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1536,
-        1300
-      ],
-      "id": "fd80c82f-5572-5d68-b253-efdb020a4886",
-      "name": "Look Up Contact Related in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch read of the related records that already exist in HubSpot.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Contact Associations   ([SPL] Simpro -> HubSpot (Real Time))\n// Links the newly created Contact to the related records that already exist in HubSpot (one batch call per\n// link type, default association). Related records not in HubSpot are skipped and listed in `skipped`\n// so they are visible in the execution. Nothing is ever removed or updated here.\nconst record = $('Get Simpro Contact').first().json;\nconst fromId = String($('Upsert Contact in HubSpot').first().json.id);\nconst lookups = $('Build Contact Related Lookups').all(); // the requests, in the order they were sent\n\nconst LINKS = [\n  { key: 'company', toType: 'company', desired: (r) => (r.Customers ?? []).map(c => c.ID) },\n  { key: 'site', toType: 'site', desired: (r) => (r.Sites ?? []).map(s => s.ID) },\n];\n\nconst OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420' };\n\nconst found = {}; // toType -> { simproId: hubspotId }\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = lookups[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // none of this batch exists in HubSpot\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('HubSpot lookup of related ' + meta.toType + ' failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  found[meta.toType] = found[meta.toType] ?? {};\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[meta.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) found[meta.toType][String(sid)] = String(x.id);\n  }\n});\n\nconst skipped = [];\nconst requests = [];\nfor (const l of LINKS) {\n  const inputs = [];\n  for (const relatedId of [...new Set((l.desired(record) ?? []).filter(v => v !== undefined && v !== null && v !== '').map(String))]) {\n    const hs = found[l.toType] ? found[l.toType][relatedId] : undefined;\n    if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });\n    else skipped.push({ link: l.key, relatedSimproId: relatedId, reason: 'not in HubSpot - link skipped' });\n  }\n  if (inputs.length) {\n    requests.push({\n      url: 'https://api.hubapi.com/crm/v4/associations/contacts/' + OBJECTS[l.toType] + '/batch/associate/default',\n      body: { inputs },\n      meta: { link: l.key, count: inputs.length },\n    });\n  }\n}\n// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).\nif (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));\nreturn requests.map(r => ({ json: { ...r, skipped } }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1760,
-        1300
-      ],
-      "id": "c5ccbe62-a707-53bd-aa32-5b82dae3c429",
-      "name": "Build Contact Associations",
-      "notesInFlow": true,
-      "notes": "Builds one batch-associate call per link type. Related records not in HubSpot are skipped and listed under `skipped`."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1984,
-        1300
-      ],
-      "id": "0756bd4a-3ed6-55ef-8666-174b128be4fb",
-      "name": "Create Contact Associations in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch-associate (default association). Idempotent, so it may retry.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/crm/objects/2026-09/deals/search",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ ({\n  filterGroups: [ { filters: [ { propertyName: 'simpro_quote_id', operator: 'EQ', value: String($json.body.reference.quoteID) } ] } ],\n  properties: ['simpro_quote_id'],\n  limit: 1,\n}) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -32,
-        1750
-      ],
-      "id": "4ee8ff15-9043-531d-b0d6-8ca0846f3909",
-      "name": "Find Quote Deal in HubSpot",
-      "notesInFlow": true,
-      "notes": "Is this quote already in HubSpot? Searches the unique simpro_quote_id.",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "ee207a46-e5fd-54bd-b988-243b15692938",
-              "leftValue": "={{ String(Array.isArray($json.results) && $json.results.length === 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        192,
-        1750
-      ],
-      "id": "e734f8e3-8da3-529c-8347-bc5149acfdaa",
-      "name": "Is New Quote?",
-      "notesInFlow": true,
-      "notes": "True: not in HubSpot yet, go on and create it. False: already there, do nothing."
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Quote Related Lookups   ([SPL] Simpro -> HubSpot (Real Time))\n// The Quote was just CREATED in HubSpot. Work out which related Simpro records it should link to (LINKS)\n// and ask HubSpot, in one batch read per related type, which of them already exist (by the unique\n// Simpro ID property). Related records that are not in HubSpot are NOT created here - they are skipped.\n// Returns no items when there is nothing to link, which ends the branch on purpose.\nconst record = $('Get Simpro Quote').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst LINKS = [\n  { key: 'site', toType: 'site', desired: (r) => [r.Site?.ID] },\n  { key: 'contact', toType: 'contact', desired: (r) => [r.CustomerContact?.ID] },\n  { key: 'company', toType: 'company', desired: (r) => [r.Customer?.ID] },\n];\n\nconst OBJECTS = {\n  company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },\n  contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },\n  site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },\n};\n\nconst needed = {}; // toType -> Set(related simpro ids)\nfor (const l of LINKS) {\n  for (const id of (l.desired(record) ?? [])) {\n    if (id === undefined || id === null || id === '') continue;\n    (needed[l.toType] = needed[l.toType] ?? new Set()).add(String(id));\n  }\n}\n\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = OBJECTS[toType];\n  chunk([...set], 100).forEach((part, n) => requests.push({\n    url: 'https://api.hubapi.com/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nreturn requests.map(r => ({ json: r }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        864,
-        1750
-      ],
-      "id": "68d31663-d098-556e-a50b-1370f1103fa9",
-      "name": "Build Quote Related Lookups",
-      "notesInFlow": true,
-      "notes": "Which related records does this new quote link to? Batch-reads them by Simpro ID. None = nothing to link, branch ends."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "neverError": true
-            }
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1088,
-        1750
-      ],
-      "id": "85ade4fe-5b5b-59da-81c2-807dae961fb2",
-      "name": "Look Up Quote Related in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch read of the related records that already exist in HubSpot.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Quote Associations   ([SPL] Simpro -> HubSpot (Real Time))\n// Links the newly created Quote to the related records that already exist in HubSpot (one batch call per\n// link type, default association). Related records not in HubSpot are skipped and listed in `skipped`\n// so they are visible in the execution. Nothing is ever removed or updated here.\nconst record = $('Get Simpro Quote').first().json;\nconst fromId = String($('Upsert Quote Deal in HubSpot').first().json.dealId);\nconst lookups = $('Build Quote Related Lookups').all(); // the requests, in the order they were sent\n\nconst LINKS = [\n  { key: 'site', toType: 'site', desired: (r) => [r.Site?.ID] },\n  { key: 'contact', toType: 'contact', desired: (r) => [r.CustomerContact?.ID] },\n  { key: 'company', toType: 'company', desired: (r) => [r.Customer?.ID] },\n];\n\nconst OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420' };\n\nconst found = {}; // toType -> { simproId: hubspotId }\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = lookups[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // none of this batch exists in HubSpot\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('HubSpot lookup of related ' + meta.toType + ' failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  found[meta.toType] = found[meta.toType] ?? {};\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[meta.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) found[meta.toType][String(sid)] = String(x.id);\n  }\n});\n\nconst skipped = [];\nconst requests = [];\nfor (const l of LINKS) {\n  const inputs = [];\n  for (const relatedId of [...new Set((l.desired(record) ?? []).filter(v => v !== undefined && v !== null && v !== '').map(String))]) {\n    const hs = found[l.toType] ? found[l.toType][relatedId] : undefined;\n    if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });\n    else skipped.push({ link: l.key, relatedSimproId: relatedId, reason: 'not in HubSpot - link skipped' });\n  }\n  if (inputs.length) {\n    requests.push({\n      url: 'https://api.hubapi.com/crm/v4/associations/deals/' + OBJECTS[l.toType] + '/batch/associate/default',\n      body: { inputs },\n      meta: { link: l.key, count: inputs.length },\n    });\n  }\n}\n// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).\nif (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));\nreturn requests.map(r => ({ json: { ...r, skipped } }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1312,
-        1750
-      ],
-      "id": "bff17db0-afe0-5b0f-a48e-b2cf990ce0aa",
-      "name": "Build Quote Associations",
-      "notesInFlow": true,
-      "notes": "Builds one batch-associate call per link type. Related records not in HubSpot are skipped and listed under `skipped`."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1536,
-        1750
-      ],
-      "id": "263f5735-3659-57f8-89b6-3c2bbc3864b2",
-      "name": "Create Quote Associations in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch-associate (default association). Idempotent, so it may retry.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/crm/objects/2026-09/deals/search",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ ({\n  filterGroups: [ { filters: [ { propertyName: 'simpro_job_id', operator: 'EQ', value: String($json.body.reference.jobID) } ] } ],\n  properties: ['simpro_job_id'],\n  limit: 1,\n}) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -32,
-        2200
-      ],
-      "id": "1e8c3c8c-5cdc-5d58-b7fd-29691f41e1e8",
-      "name": "Find Job Deal in HubSpot",
-      "notesInFlow": true,
-      "notes": "Is this job already in HubSpot? Searches the unique simpro_job_id.",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "2497afb8-1c45-5f82-a9ee-849891c5c3f9",
-              "leftValue": "={{ String(Array.isArray($json.results) && $json.results.length === 0) }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        192,
-        2200
-      ],
-      "id": "22284795-2a36-59c0-99c9-43064d94c157",
-      "name": "Is New Job?",
-      "notesInFlow": true,
-      "notes": "True: not in HubSpot yet, go on and create it. False: already there, do nothing."
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Job Related Lookups   ([SPL] Simpro -> HubSpot (Real Time))\n// The Job was just CREATED in HubSpot. Work out which related Simpro records it should link to (LINKS)\n// and ask HubSpot, in one batch read per related type, which of them already exist (by the unique\n// Simpro ID property). Related records that are not in HubSpot are NOT created here - they are skipped.\n// Returns no items when there is nothing to link, which ends the branch on purpose.\nconst record = $('Get Simpro Job').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst LINKS = [\n  { key: 'site', toType: 'site', desired: (r) => [r.Site?.ID] },\n  { key: 'contact', toType: 'contact', desired: (r) => [r.CustomerContact?.ID] },\n  { key: 'company', toType: 'company', desired: (r) => [r.Customer?.ID] },\n  // The quote this job was converted from (a quote is a deal in HubSpot): Simpro ConvertedFromQuote.ID,\n  // or ConvertedFrom when its Type is Quote. No quote (job created directly) = nothing to look up.\n  { key: 'quote', toType: 'quote', desired: (r) => [r.ConvertedFromQuote?.ID ?? (r.ConvertedFrom?.Type === 'Quote' ? r.ConvertedFrom.ID : undefined)] },\n];\n\nconst OBJECTS = {\n  company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },\n  contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },\n  site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },\n  quote: { path: 'crm/objects/2026-09/deals', idProperty: 'simpro_quote_id' }, // a quote is a deal\n};\n\nconst needed = {}; // toType -> Set(related simpro ids)\nfor (const l of LINKS) {\n  for (const id of (l.desired(record) ?? [])) {\n    if (id === undefined || id === null || id === '') continue;\n    (needed[l.toType] = needed[l.toType] ?? new Set()).add(String(id));\n  }\n}\n\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = OBJECTS[toType];\n  chunk([...set], 100).forEach((part, n) => requests.push({\n    url: 'https://api.hubapi.com/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nreturn requests.map(r => ({ json: r }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        864,
-        2200
-      ],
-      "id": "cb15676e-d1cb-5ab6-81ee-03074ebd3ab1",
-      "name": "Build Job Related Lookups",
-      "notesInFlow": true,
-      "notes": "Which related records does this new job link to (site, contact, company and the quote it was converted from)? Batch-reads them by Simpro ID. None = nothing to link, branch ends."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "neverError": true
-            }
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1088,
-        2200
-      ],
-      "id": "547ead93-532d-5b1e-9e74-681d84af8f7a",
-      "name": "Look Up Job Related in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch read of the related records that already exist in HubSpot.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Node: Build Job Associations   ([SPL] Simpro -> HubSpot (Real Time))\n// Links the newly created Job to the related records that already exist in HubSpot (one batch call per\n// link type, default association). Related records not in HubSpot are skipped and listed in `skipped`\n// so they are visible in the execution. Nothing is ever removed or updated here.\nconst record = $('Get Simpro Job').first().json;\nconst fromId = String($('Upsert Job Deal in HubSpot').first().json.dealId);\nconst lookups = $('Build Job Related Lookups').all(); // the requests, in the order they were sent\n\nconst LINKS = [\n  { key: 'site', toType: 'site', desired: (r) => [r.Site?.ID] },\n  { key: 'contact', toType: 'contact', desired: (r) => [r.CustomerContact?.ID] },\n  { key: 'company', toType: 'company', desired: (r) => [r.Customer?.ID] },\n  // Quote deal -> Job deal with SPL's custom label: \"Job\" is shown on the quote, the inverse \"Quote\" on the\n  // job (HubSpot internal name quote_job, USER_DEFINED, association ID 11, 1-to-many). The quote is the\n  // FROM side because the ID describes the label of the TO record.\n  { key: 'quote', toType: 'quote', desired: (r) => [r.ConvertedFromQuote?.ID ?? (r.ConvertedFrom?.Type === 'Quote' ? r.ConvertedFrom.ID : undefined)],\n    labelled: { quoteIsFrom: true, types: [{ associationCategory: 'USER_DEFINED', associationTypeId: 11 }] } },\n];\n\nconst OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420', quote: 'deals' };\n\nconst found = {}; // toType -> { simproId: hubspotId }\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = lookups[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // none of this batch exists in HubSpot\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('HubSpot lookup of related ' + meta.toType + ' failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  found[meta.toType] = found[meta.toType] ?? {};\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[meta.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) found[meta.toType][String(sid)] = String(x.id);\n  }\n});\n\nconst skipped = [];\nconst requests = [];\nfor (const l of LINKS) {\n  const inputs = [];\n  const labelledInputs = [];\n  for (const relatedId of [...new Set((l.desired(record) ?? []).filter(v => v !== undefined && v !== null && v !== '').map(String))]) {\n    const hs = found[l.toType] ? found[l.toType][relatedId] : undefined;\n    if (hs && l.labelled) labelledInputs.push({ from: { id: hs }, to: { id: fromId }, types: l.labelled.types });\n    else if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });\n    else skipped.push({ link: l.key, relatedSimproId: relatedId, reason: 'not in HubSpot - link skipped' });\n  }\n  if (labelledInputs.length) {\n    requests.push({\n      url: 'https://api.hubapi.com/crm/v4/associations/deals/deals/batch/create',\n      body: { inputs: labelledInputs },\n      meta: { link: l.key, count: labelledInputs.length },\n    });\n  }\n  if (inputs.length) {\n    requests.push({\n      url: 'https://api.hubapi.com/crm/v4/associations/deals/' + OBJECTS[l.toType] + '/batch/associate/default',\n      body: { inputs },\n      meta: { link: l.key, count: inputs.length },\n    });\n  }\n}\n// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).\nif (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));\nreturn requests.map(r => ({ json: { ...r, skipped } }));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1312,
-        2200
-      ],
-      "id": "4c3325ec-5b44-5e51-92c6-20b0c67eddbe",
-      "name": "Build Job Associations",
-      "notesInFlow": true,
-      "notes": "One batch call per link type. The quote link uses the custom label Job/Quote (ID 11), quote as the FROM side. Related records not in HubSpot are skipped and listed under `skipped`."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1536,
-        2200
-      ],
-      "id": "a059dae2-0568-5205-88ac-2f9616877a76",
-      "name": "Create Job Associations in HubSpot",
-      "notesInFlow": true,
-      "notes": "Batch-associate (default association). Idempotent, so it may retry.",
-      "credentials": {
-        "hubspotAppToken": {
-          "name": "SPL Account"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "content": "## [SPL] Simpro -> HubSpot (Real Time): create and link only\nThe webhook is the only trigger. A test record that is NOT yet in HubSpot is created and linked to the related records that already exist in HubSpot. Anything already in HubSpot is left alone: updates come from the 30-minute Simpro -> HubSpot sync workflows. The event name does not matter (created / updated / status ...); existence in HubSpot decides.\n\n**After import (manual steps)**\n1. Connect `SPL Simpro` and `SPL Account` on every credentialed node; confirm no 'not connected' warning remains.\n2. Re-select the sub-workflows if n8n asks ([SPL] Check Simpro Test Record and the five [SPL] Upsert ... in HubSpot).\n3. Set Settings > Error Workflow.\n4. Keep the webhook URL the same: import into the existing workflow (select all, delete, import) so the `hubsput-upsert` path and Simpro's webhook stay valid.\n\n⚠ The webhook has no authentication (known open finding).",
-        "height": 400,
-        "width": 1100,
-        "color": 4
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -1408,
-        520
-      ],
-      "id": "9c2e62ab-d18d-53f3-beff-c51caa0b57b6",
-      "name": "Overview and checklist"
-    }
-  ],
-  "connections": {
-    "Simpro Webhook": {
-      "main": [
-        [
-          {
-            "node": "Check Test Record",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check Test Record": {
-      "main": [
-        [
-          {
-            "node": "Is HS Test Record",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is HS Test Record": {
-      "main": [
-        [
-          {
-            "node": "Route by Simpro Event",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Skip Non-Test Record",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Route by Simpro Event": {
-      "main": [
-        [
-          {
-            "node": "Log Site Event",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Customer Event",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Contact Event",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Quote Event",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Job Event",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Site Event": {
-      "main": [
-        [
-          {
-            "node": "Find Site in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Site in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Is New Site?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is New Site?": {
-      "main": [
-        [
-          {
-            "node": "Get Simpro Site",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Already In HubSpot - Skip",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Simpro Site": {
-      "main": [
-        [
-          {
-            "node": "Upsert Site in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Site in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Site Related Lookups",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Site Related Lookups": {
-      "main": [
-        [
-          {
-            "node": "Look Up Site Related in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Look Up Site Related in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Site Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Site Associations": {
-      "main": [
-        [
-          {
-            "node": "Create Site Associations in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Customer Event": {
-      "main": [
-        [
-          {
-            "node": "Find Company in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Company in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Is New Company?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is New Company?": {
-      "main": [
-        [
-          {
-            "node": "Get Simpro Customer",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Already In HubSpot - Skip",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Simpro Customer": {
-      "main": [
-        [
-          {
-            "node": "Upsert Company in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Company in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Company Related Lookups",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Company Related Lookups": {
-      "main": [
-        [
-          {
-            "node": "Look Up Company Related in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Look Up Company Related in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Company Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Company Associations": {
-      "main": [
-        [
-          {
-            "node": "Create Company Associations in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Contact Event": {
-      "main": [
-        [
-          {
-            "node": "Find Contact in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Contact in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Is New Contact?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is New Contact?": {
-      "main": [
-        [
-          {
-            "node": "Get Simpro Contact",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Already In HubSpot - Skip",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Simpro Contact": {
-      "main": [
-        [
-          {
-            "node": "Find Contact by Email in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Contact by Email in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Is Email Free?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is Email Free?": {
-      "main": [
-        [
-          {
-            "node": "Upsert Contact in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Report Email Conflict",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Contact in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Contact Related Lookups",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Contact Related Lookups": {
-      "main": [
-        [
-          {
-            "node": "Look Up Contact Related in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Look Up Contact Related in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Contact Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Contact Associations": {
-      "main": [
-        [
-          {
-            "node": "Create Contact Associations in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Quote Event": {
-      "main": [
-        [
-          {
-            "node": "Find Quote Deal in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Quote Deal in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Is New Quote?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is New Quote?": {
-      "main": [
-        [
-          {
-            "node": "Get Simpro Quote",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Already In HubSpot - Skip",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Simpro Quote": {
-      "main": [
-        [
-          {
-            "node": "Upsert Quote Deal in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Quote Deal in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Quote Related Lookups",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Quote Related Lookups": {
-      "main": [
-        [
-          {
-            "node": "Look Up Quote Related in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Look Up Quote Related in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Quote Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Quote Associations": {
-      "main": [
-        [
-          {
-            "node": "Create Quote Associations in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Job Event": {
-      "main": [
-        [
-          {
-            "node": "Find Job Deal in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Job Deal in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Is New Job?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is New Job?": {
-      "main": [
-        [
-          {
-            "node": "Get Simpro Job",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Already In HubSpot - Skip",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Simpro Job": {
-      "main": [
-        [
-          {
-            "node": "Upsert Job Deal in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert Job Deal in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Job Related Lookups",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Job Related Lookups": {
-      "main": [
-        [
-          {
-            "node": "Look Up Job Related in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Look Up Job Related in HubSpot": {
-      "main": [
-        [
-          {
-            "node": "Build Job Associations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Job Associations": {
-      "main": [
-        [
-          {
-            "node": "Create Job Associations in HubSpot",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
   }
 }
