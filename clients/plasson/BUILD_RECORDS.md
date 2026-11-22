@@ -5,7 +5,7 @@ Resolved, instance-specific values for Plasson builds. **Only Plasson values bel
 ---
 
 ## 1. NetSuite Quote → HubSpot Deal Lines
-*NetSuite → HubSpot. 2 workflows: NetSuite Quote Dispatcher, NetSuite Quote -> HubSpot Deal Lines. Client: Plasson. Instance: UNKNOWN. Status: UAT (existing exports; dispatcher filtered to titles starting `HS-TEST-`).*
+*NetSuite → HubSpot. 2 workflows: NetSuite Quote Dispatcher, NetSuite Quote -> HubSpot Deal Lines. Client: Plasson. Instance: UNKNOWN. Status: go-live version ready (dispatcher v2, UAT filter cleared). Import and publish pending.*
 
 **Workflow IDs**
 | Workflow | ID |
@@ -28,7 +28,7 @@ NetSuite status → `quote_status` → stage: see `statusToStage` in the sub-wor
 Dispatcher: schedule every 30 min; overlap 10 min; parked quotes re-pulled for 14 days.
 
 **Known findings and open items**
-- Validator (2026-11-09): 6 ERRORs (5 unparenthesised `jsonBody` object literals, deprecated `mode: each`). Not yet fixed; needs a decision.
-- `active: true` in both exports; no `settings.errorWorkflow` set.
+- Validator: dispatcher v2 has 2 ERRORs (deprecated `mode: each`, one unparenthesised `jsonBody` literal); sub-workflow has 4 (unparenthesised `jsonBody` literals). Not fixed (live workflows); needs a decision. `validate-n8n` CI will flag them.
+- Both exports now ship `active: false`; no `settings.errorWorkflow` set on either (manual step at import).
 - Dispatcher references the sub-workflow as "NetSuite Quote -> HubSpot Deal Lines v2" but the export is named without `v2`.
-- UAT prefix `HS-TEST-` is cleared in `plasson__netsuite-quote-dispatcher__v2.json` (go-live version, shipped `active: false`). `v1` still has the filter. Status moves to live once v2 is imported and published.
+- UAT prefix `HS-TEST-` is cleared in `plasson__netsuite-quote-dispatcher__v2.json`. `v1` (still filtered) is archived in `workflows/netsuite-to-hubspot/archive/`. Status moves to live once v2 is imported and published.
