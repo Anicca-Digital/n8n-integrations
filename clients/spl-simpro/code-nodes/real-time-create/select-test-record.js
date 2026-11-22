@@ -5,6 +5,10 @@
 // answers "is this record already in HubSpot?" (a contact is also matched on email, see Check Is New).
 const cfg = $('Workflow Config').first().json;
 const rec = $input.first().json;
+if (typeof cfg.testNamePrefix !== 'string' || !Array.isArray(cfg.testEmailDomains)) {
+  throw new Error("Workflow Config is out of date: it needs testNamePrefix (text) and testEmailDomains (list). "
+    + "Replace the test-record settings in the Workflow Config node, or re-import the workflow.");
+}
 
 // Name: Name (sites, quotes, jobs), CompanyName (companies), GivenName + FamilyName (contacts)
 const name = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim().toLowerCase();
