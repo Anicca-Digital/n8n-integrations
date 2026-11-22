@@ -508,7 +508,7 @@
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const dealId = String($('Create or Update Quote Deal').first().json.id);\n  const costCenters = $('Collect Cost Centers').first().json.costCenters.filter(c => c.ID);\n  return {\n    inputs: costCenters.map(c => ({\n      properties: {\n        name: c.Name ?? c.CostCenter.Name,\n        quantity: '1',\n        price: c.Total.IncTax.toString(),\n        cost_centre: c.CostCenter.ID.toString(),\n        simpro_id: c.ID.toString(),\n      },\n      associations: [\n        { to: { id: dealId }, types: [ { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 20 } ] },\n      ],\n    })),\n  };\n})() }}",
+        "jsonBody": "={{ (() => {\n  const dealId = String($('Create or Update Quote Deal').first().json.id);\n  const costCenters = $('Collect Cost Centers').first().json.costCenters.filter(c => c.ID);\n  return {\n    inputs: costCenters.map(c => ({\n      properties: {\n        name: c.Name ?? c.CostCenter.Name,\n        quantity: '1',\n        price: c.Total.ExTax.toString(),\n        cost_centre: c.CostCenter.ID.toString(),\n        simpro_id: c.ID.toString(),\n      },\n      associations: [\n        { to: { id: dealId }, types: [ { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 20 } ] },\n      ],\n    })),\n  };\n})() }}",
         "options": {}
       },
       "id": "9869f214-f838-4b63-874e-63b20006c5d7",

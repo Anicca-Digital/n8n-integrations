@@ -1,6 +1,6 @@
 // Node: Plan Line Items   (quote and job workflows)
-// Builds the line items each deal should have (one per Simpro cost center, same fields as the existing
-// sub-workflow) and asks HubSpot which line items each deal has NOW (one batch read per 100 deals).
+// Builds the line items each deal should have (one per Simpro cost center; price = the cost center's
+// GST-EXCLUSIVE total, Total.ExTax, since 2026-11-22) and asks HubSpot which line items each deal has NOW (one batch read per 100 deals).
 // Deals whose Simpro fetch failed are left alone and reported.
 const cfg = $('Build Sync Window').first().json;
 const { records } = $('Select Test Records').first().json;
@@ -39,7 +39,7 @@ for (const r of records) {
     properties: {
       name: c.Name ?? c.CostCenter.Name,
       quantity: '1',
-      price: c.Total.IncTax.toString(),
+      price: c.Total.ExTax.toString(),
       cost_centre: c.CostCenter.ID.toString(),
       simpro_id: c.ID.toString(),
     },
