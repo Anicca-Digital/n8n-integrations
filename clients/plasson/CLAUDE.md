@@ -21,7 +21,7 @@ Read this before editing anything in `clients/plasson/`. Full detail is in `READ
 - Any failed quote must hold the watermark. Do not change this.
 - Create Line Items must not retry (a retry could duplicate lines). Old lines are archived only after all new lines are created.
 - Status → stage mapping lives in the sub-workflow's Config node (`statusToStage`). A new NetSuite status must be added there and to the HubSpot `quote_status` dropdown.
-- UAT filter: the dispatcher's `uatTitlePrefix` (currently `HS-TEST-`) limits sync to quotes whose title starts with it. Clearing it is the go-live step. Do not clear it without asking.
+- UAT filter: the dispatcher's `uatTitlePrefix` limits sync to quotes whose title starts with it. `v1` has `HS-TEST-`; `v2` has it cleared (all quotes sync, go-live). Do not set it again without asking.
 - The dispatcher is cloud-time sensitive: `netsuiteTimezone` is `Australia/Sydney`.
 
 ## Importing

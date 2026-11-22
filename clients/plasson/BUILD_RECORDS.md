@@ -31,4 +31,4 @@ Dispatcher: schedule every 30 min; overlap 10 min; parked quotes re-pulled for 1
 - Validator (2026-11-09): 6 ERRORs (5 unparenthesised `jsonBody` object literals, deprecated `mode: each`). Not yet fixed; needs a decision.
 - `active: true` in both exports; no `settings.errorWorkflow` set.
 - Dispatcher references the sub-workflow as "NetSuite Quote -> HubSpot Deal Lines v2" but the export is named without `v2`.
-- UAT prefix `HS-TEST-` still active; go-live requires clearing it.
+- UAT prefix `HS-TEST-` is cleared in `plasson__netsuite-quote-dispatcher__v2.json` (go-live version, shipped `active: false`). `v1` still has the filter. Status moves to live once v2 is imported and published.
