@@ -1,28 +1,6 @@
 {
   "name": "[SPL] Simpro -> HubSpot (Real Time)",
   "pinData": {
-    "Receive Record": [
-      {
-        "json": {
-          "hasRecords": true,
-          "body": {
-            "name": "Job",
-            "reference": {
-              "companyID": 4,
-              "jobID": 468672
-            }
-          },
-          "meta": {
-            "source": "poll",
-            "windowFrom": "2026-10-07T09:55:57.106Z",
-            "windowTo": "2026-10-07T10:30:57.106Z"
-          }
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ],
     "Simpro Webhook": [
       {
         "json": {
@@ -94,40 +72,14 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        -1408,
-        1360
+        -1184,
+        1300
       ],
       "id": "9963dee0-7587-41aa-8f81-7ab87a7eed02",
       "name": "Simpro Webhook",
       "webhookId": "0bad2df5-757b-4635-9032-b3e68f718e7f",
       "notesInFlow": true,
       "notes": "Receives every Simpro webhook event (created, updated, status ...). Only a test record that is NOT yet in HubSpot is acted on. ⚠ No auth (known open finding, left as is)."
-    },
-    {
-      "parameters": {
-        "inputSource": "passthrough"
-      },
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        -1408,
-        1140
-      ],
-      "id": "e296dbe1-eb81-496d-9320-ca1526895483",
-      "name": "Receive Record",
-      "notesInFlow": true,
-      "notes": "Called once per changed record by [SPL] Simpro -> HubSpot Poller. Input data mode must read 'Accept all data'. Item shape matches the old webhook: { body: { name, reference } }."
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        -1184,
-        1300
-      ],
-      "id": "6617636d-8dc4-4d5a-8ff7-a205252e700e",
-      "name": "Merge"
     },
     {
       "parameters": {
@@ -751,8 +703,8 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "simpro_quote_id": "={{ $('Merge').item.json.body.reference.quoteID.toString() }}",
-            "simpro_company_id": "={{ $('Merge').item.json.body.reference.companyID.toString() }}"
+            "simpro_quote_id": "={{ $('Simpro Webhook').item.json.body.reference.quoteID.toString() }}",
+            "simpro_company_id": "={{ $('Simpro Webhook').item.json.body.reference.companyID.toString() }}"
           },
           "matchingColumns": [],
           "schema": [
@@ -803,8 +755,8 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "simpro_job_id": "={{ $('Merge').item.json.body.reference.jobID.toString() }}",
-            "simpro_company_id": "={{ $('Merge').item.json.body.reference.companyID.toString()}}"
+            "simpro_job_id": "={{ $('Simpro Webhook').item.json.body.reference.jobID.toString() }}",
+            "simpro_company_id": "={{ $('Simpro Webhook').item.json.body.reference.companyID.toString()}}"
           },
           "matchingColumns": [],
           "schema": [
@@ -1824,7 +1776,7 @@
     },
     {
       "parameters": {
-        "content": "## [SPL] Simpro -> HubSpot (Real Time): create and link only\nA test record that is NOT yet in HubSpot is created and linked to the related records that already exist in HubSpot. Anything already in HubSpot is left alone: updates come from the 30-minute Simpro -> HubSpot sync workflows. The event name does not matter (created / updated / status ...); existence in HubSpot decides.\n\n**After import (manual steps)**\n1. Connect `SPL Simpro` and `SPL Account` on every credentialed node; confirm no 'not connected' warning remains.\n2. Re-select the sub-workflows if n8n asks ([SPL] Check Simpro Test Record and the five [SPL] Upsert ... in HubSpot).\n3. Set Settings > Error Workflow.\n4. Keep the webhook URL the same: import into the existing workflow (select all, delete, import) so the `hubsput-upsert` path and Simpro's webhook stay valid.\n\n⚠ The webhook has no authentication (known open finding).",
+        "content": "## [SPL] Simpro -> HubSpot (Real Time): create and link only\nThe webhook is the only trigger. A test record that is NOT yet in HubSpot is created and linked to the related records that already exist in HubSpot. Anything already in HubSpot is left alone: updates come from the 30-minute Simpro -> HubSpot sync workflows. The event name does not matter (created / updated / status ...); existence in HubSpot decides.\n\n**After import (manual steps)**\n1. Connect `SPL Simpro` and `SPL Account` on every credentialed node; confirm no 'not connected' warning remains.\n2. Re-select the sub-workflows if n8n asks ([SPL] Check Simpro Test Record and the five [SPL] Upsert ... in HubSpot).\n3. Set Settings > Error Workflow.\n4. Keep the webhook URL the same: import into the existing workflow (select all, delete, import) so the `hubsput-upsert` path and Simpro's webhook stay valid.\n\n⚠ The webhook has no authentication (known open finding).",
         "height": 400,
         "width": 1100,
         "color": 4
@@ -1841,28 +1793,6 @@
   ],
   "connections": {
     "Simpro Webhook": {
-      "main": [
-        [
-          {
-            "node": "Merge",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Receive Record": {
-      "main": [
-        [
-          {
-            "node": "Merge",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge": {
       "main": [
         [
           {

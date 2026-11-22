@@ -58,7 +58,7 @@ Template (copy per automation):
 
 
 ### 2a. Real Time webhook: create and link only (edited 2026-11-22)
-Edited in place from the live export (real `Check Simpro Test Record` sub-workflow ID retained). Webhook path `hubsput-upsert` and webhook ID unchanged. 114 -> 62 nodes. Validated (1 ERROR: the known unauthenticated webhook, left on purpose) and simulated end to end (16 scenarios: new/existing/non-test for every type, missing related records skipped, email conflict, search error). Not yet imported or run on SPL's instance.
+Edited in place from the live export (real `Check Simpro Test Record` sub-workflow ID retained). Webhook path `hubsput-upsert` and webhook ID unchanged. 114 -> 60 nodes (webhook is the only trigger: `Receive Record` and `Merge` removed). Validated (1 ERROR: the known unauthenticated webhook, left on purpose) and simulated end to end (15 scenarios: new/existing/non-test for every type, missing related records skipped, email conflict, search error). Not yet imported or run on SPL's instance.
 - **Decisions (SPL, 2026-11-22):** link only to related records already in HubSpot; a contact's email and Simpro ID must match (no adopt-by-email in Real Time); leave webhook auth alone.
 - **Observed payload:** `{ID: "job.status", name: "Job", action: "status", reference: {companyID: 4, jobID: 474119, statusID: 56}}`. No `created` sample was available, so the workflow keys on "not in HubSpot yet", not the event name.
 - **To confirm on the first real events:** the HubSpot search on `simpro_*_id` finds existing records; the batch read by `idProperty` and batch associate respond as simulated.
