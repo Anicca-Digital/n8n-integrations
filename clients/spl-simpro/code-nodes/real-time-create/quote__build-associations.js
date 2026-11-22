@@ -47,4 +47,6 @@ for (const l of LINKS) {
     });
   }
 }
+// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).
+if (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));
 return requests.map(r => ({ json: { ...r, skipped } }));

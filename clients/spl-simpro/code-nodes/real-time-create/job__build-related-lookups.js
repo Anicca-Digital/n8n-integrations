@@ -10,12 +10,16 @@ const LINKS = [
   { key: 'site', toType: 'site', desired: (r) => [r.Site?.ID] },
   { key: 'contact', toType: 'contact', desired: (r) => [r.CustomerContact?.ID] },
   { key: 'company', toType: 'company', desired: (r) => [r.Customer?.ID] },
+  // The quote this job was converted from (a quote is a deal in HubSpot): Simpro ConvertedFromQuote.ID,
+  // or ConvertedFrom when its Type is Quote. No quote (job created directly) = nothing to look up.
+  { key: 'quote', toType: 'quote', desired: (r) => [r.ConvertedFromQuote?.ID ?? (r.ConvertedFrom?.Type === 'Quote' ? r.ConvertedFrom.ID : undefined)] },
 ];
 
 const OBJECTS = {
   company: { path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },
   contact: { path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },
   site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },
+  quote: { path: 'crm/objects/2026-09/deals', idProperty: 'simpro_quote_id' }, // a quote is a deal
 };
 
 const needed = {}; // toType -> Set(related simpro ids)

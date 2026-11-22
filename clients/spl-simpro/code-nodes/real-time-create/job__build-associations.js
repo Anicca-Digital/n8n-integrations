@@ -10,9 +10,14 @@ const LINKS = [
   { key: 'site', toType: 'site', desired: (r) => [r.Site?.ID] },
   { key: 'contact', toType: 'contact', desired: (r) => [r.CustomerContact?.ID] },
   { key: 'company', toType: 'company', desired: (r) => [r.Customer?.ID] },
+  // Quote deal -> Job deal with SPL's custom label: "Job" is shown on the quote, the inverse "Quote" on the
+  // job (HubSpot internal name quote_job, USER_DEFINED, association ID 11, 1-to-many). The quote is the
+  // FROM side because the ID describes the label of the TO record.
+  { key: 'quote', toType: 'quote', desired: (r) => [r.ConvertedFromQuote?.ID ?? (r.ConvertedFrom?.Type === 'Quote' ? r.ConvertedFrom.ID : undefined)],
+    labelled: { quoteIsFrom: true, types: [{ associationCategory: 'USER_DEFINED', associationTypeId: 11 }] } },
 ];
 
-const OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420' };
+const OBJECTS = { company: 'companies', contact: 'contacts', site: '0-420', quote: 'deals' };
 
 const found = {}; // toType -> { simproId: hubspotId }
 $input.all().forEach((item, k) => {
@@ -34,10 +39,19 @@ const skipped = [];
 const requests = [];
 for (const l of LINKS) {
   const inputs = [];
+  const labelledInputs = [];
   for (const relatedId of [...new Set((l.desired(record) ?? []).filter(v => v !== undefined && v !== null && v !== '').map(String))]) {
     const hs = found[l.toType] ? found[l.toType][relatedId] : undefined;
-    if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });
+    if (hs && l.labelled) labelledInputs.push({ from: { id: hs }, to: { id: fromId }, types: l.labelled.types });
+    else if (hs) inputs.push({ from: { id: fromId }, to: { id: hs } });
     else skipped.push({ link: l.key, relatedSimproId: relatedId, reason: 'not in HubSpot - link skipped' });
+  }
+  if (labelledInputs.length) {
+    requests.push({
+      url: 'https://api.hubapi.com/crm/v4/associations/deals/deals/batch/create',
+      body: { inputs: labelledInputs },
+      meta: { link: l.key, count: labelledInputs.length },
+    });
   }
   if (inputs.length) {
     requests.push({
@@ -47,4 +61,6 @@ for (const l of LINKS) {
     });
   }
 }
+// Make skipped links visible even when nothing is left to link (no items = nothing else to look at).
+if (skipped.length) $execution.customData.set('skippedLinks', skipped.map(s => s.link + ':' + s.relatedSimproId).join(', ').slice(0, 250));
 return requests.map(r => ({ json: { ...r, skipped } }));
