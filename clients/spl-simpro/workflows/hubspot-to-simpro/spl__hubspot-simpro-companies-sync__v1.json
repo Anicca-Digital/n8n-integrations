@@ -1,0 +1,660 @@
+{
+  "name": "[SPL] HubSpot -> Simpro Companies Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "2,32 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1500,
+        500
+      ],
+      "id": "99991622-d803-5797-a949-ee8899b9184d",
+      "name": "Every 30 Minutes",
+      "notesInFlow": true,
+      "notes": "Runs at :02 and :32 past the hour (production only - publish the workflow). Staggered so Companies run before Contacts, Sites, Quotes and Jobs, and offset from the Simpro -> HubSpot syncs."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Sync Window   ([SPL] HubSpot -> Simpro Companies Sync)\n// Settings + time window for this sync. Single source of truth: edit values HERE only.\n// The watermark lives in THIS workflow's own static data, so the five HubSpot -> Simpro syncs never share a window.\nconst CONFIG = {\n  recordType: 'company', // company | contact | site | quote | job\n  label: 'Companies',\n  // --- TEST MODE: while true, only TEST records are sent to Simpro. Set to false to send everything. ---\n  testOnly: true,\n  // A record is a test record when its name starts with namePrefix OR its own email domain is in emailDomains (case-insensitive).\n  testRecords: { namePrefix: 'HSTEST-', emailDomains: ['aniccadigital.io', 'spl.com.au'], nameFields: ['name'], emailField: 'email' },\n  // --- HubSpot ---\n  hubspotApiBase: 'https://api.hubapi.com',\n  objectPath: 'crm/objects/2026-09/companies',\n  assocObject: 'companies', // object type name used by the associations API\n  idProperty: 'simpro_customer_id', // HubSpot property that holds the Simpro ID\n  modifiedProperty: 'hs_lastmodifieddate', // what 'changed' means in HubSpot\n  pipelineId: null, // deals: only this pipeline\n  onlyAlreadyInSimpro: true, // true = only records that already have a Simpro ID (never creates new ones in Simpro), as today\n  properties: ['simpro_customer_id', 'name', 'address', 'city', 'zip', 'state', 'phone', 'website', 'country', 'email', 'abn', 'billing_address', 'billing_city', 'billing_state', 'billing_postalcode', 'billing_zip', 'billing_country'],\n  // --- Simpro ---\n  simproBaseUrl: 'https://spl.simprosuite.com/api/v1.0',\n  // --- Window (use windowStartOverride for a one-off backfill, e.g. '2020-01-01T00:00:00Z', then clear it) ---\n  overlapMinutes: 5, // re-read this far back from the last window end (late edits). Writes only happen when something differs.\n  initialLookbackMinutes: 35, // used when there is no saved watermark (first run, or any manual test run)\n  windowStartOverride: '',\n};\n\nconst state = $getWorkflowStaticData('global'); // only persists on production (trigger) runs, not manual test runs\nconst now = new Date();\nlet from;\nlet fromSource;\nif (CONFIG.windowStartOverride) {\n  from = new Date(CONFIG.windowStartOverride);\n  if (isNaN(from.getTime())) throw new Error('windowStartOverride is not a valid ISO date-time: ' + CONFIG.windowStartOverride);\n  fromSource = 'override';\n} else if (state.lastWindowEnd) {\n  from = new Date(new Date(state.lastWindowEnd).getTime() - CONFIG.overlapMinutes * 60000);\n  fromSource = 'watermark';\n} else {\n  from = new Date(now.getTime() - CONFIG.initialLookbackMinutes * 60000);\n  fromSource = 'initial lookback';\n}\nif (from.getTime() >= now.getTime()) {\n  throw new Error('Sync window starts in the future (' + from.toISOString() + '). Check windowStartOverride and the saved watermark.');\n}\n\n// The HubSpot search: records changed since the window start (+ the pipeline for deals, + \"already in Simpro\" if set).\nconst filters = [{ propertyName: CONFIG.modifiedProperty, operator: 'GTE', value: String(from.getTime()) }];\nif (CONFIG.pipelineId) filters.push({ propertyName: 'pipeline', operator: 'EQ', value: CONFIG.pipelineId });\nif (CONFIG.onlyAlreadyInSimpro) filters.push({ propertyName: CONFIG.idProperty, operator: 'HAS_PROPERTY' });\n\nreturn [{ json: {\n  ...CONFIG,\n  searchUrl: CONFIG.hubspotApiBase + '/' + CONFIG.objectPath + '/search',\n  searchBody: { filterGroups: [{ filters }], properties: CONFIG.properties, sorts: ['hs_object_id'], limit: 200 },\n  windowFrom: from.toISOString(),\n  windowTo: now.toISOString(),\n  fromSource,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        500
+      ],
+      "id": "cc13dfd3-bc84-51c2-be59-11ea044b13b9",
+      "name": "Build Sync Window",
+      "notesInFlow": true,
+      "notes": "All settings in plain words + the time window (last saved window end minus 5 min, or the last 35 min on the first run). TEST MODE is switched here."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.searchUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.searchBody }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1060,
+        500
+      ],
+      "id": "e84f06c8-7103-587f-8c91-3f0df6eb986c",
+      "name": "Find Changed Records",
+      "notesInFlow": true,
+      "notes": "HubSpot companies changed since the window start, with all the properties needed (200 per page, so no separate read per record).",
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Prepare Records   (all five HubSpot -> Simpro sync workflows)\n// Collects every page of the HubSpot search into ONE list of changed records and applies the test-record rule\n// (while testOnly is on). One state item out; later nodes read it with $('Prepare Records').first().\nconst cfg = $('Build Sync Window').first().json;\nconst pages = $('Find Changed Records').all().map(i => i.json);\n\nconst seen = new Set();\nconst found = [];\nlet rows = 0;\nlet reportedTotal = null;\nfor (const page of pages) {\n  if (!Array.isArray(page.results)) {\n    throw new Error('Find Changed Records: expected a results array from HubSpot, got ' + JSON.stringify(page).slice(0, 300));\n  }\n  if (reportedTotal === null && page.total !== undefined) reportedTotal = Number(page.total);\n  for (const row of page.results) {\n    if (row === null || typeof row !== 'object' || !row.id) throw new Error('Find Changed Records: a returned record has no id.');\n    rows++;\n    if (seen.has(String(row.id))) continue;\n    seen.add(String(row.id));\n    found.push(row);\n  }\n}\n// The page cap stops silently - fail loudly instead of syncing a partial window.\nif (reportedTotal !== null && rows < reportedTotal) {\n  throw new Error('Find Changed Records: read ' + rows + ' of ' + reportedTotal + ' changed ' + cfg.label\n    + ' (HubSpot search limit reached). Shorten the window (windowStartOverride in Build Sync Window) and run again.');\n}\n\n// Test-record rule, same as the Real Time workflow: name starts with the prefix OR the record's own email domain is a test domain.\nconst rule = cfg.testRecords;\nconst prefix = String(rule.namePrefix).toLowerCase();\nconst domains = rule.emailDomains.map(d => String(d).trim().toLowerCase());\nconst isTest = (p) => {\n  const name = rule.nameFields.map(f => p[f]).filter(Boolean).join(' ').trim().toLowerCase();\n  if (name.startsWith(prefix)) return true;\n  const email = String(rule.emailField ? (p[rule.emailField] ?? '') : '').trim().toLowerCase();\n  const domain = email.includes('@') ? email.split('@').pop() : '';\n  return domain !== '' && domains.includes(domain);\n};\n\nconst records = [];\nlet skippedNonTest = 0;\nfor (const row of found) {\n  const p = row.properties ?? {};\n  if (cfg.testOnly && !isTest(p)) { skippedNonTest++; continue; }\n  const sid = p[cfg.idProperty];\n  records.push({ hsId: String(row.id), simproId: (sid === undefined || sid === null || sid === '') ? null : String(sid), props: p });\n}\nreturn [{ json: { hasRecords: records.length > 0, records, counts: { changedInHubSpot: found.length, skippedNonTest } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -840,
+        500
+      ],
+      "id": "769cf8b3-d1c5-553c-ab5b-2610ab347d9c",
+      "name": "Prepare Records",
+      "notesInFlow": true,
+      "notes": "Collects every page into ONE list and applies the test-record rule while TEST MODE is on."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3a55a975-76f5-5e86-bab6-d03f7f709a09",
+              "leftValue": "={{ String($json.hasRecords) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -620,
+        500
+      ],
+      "id": "3a55a975-76f5-5e86-bab6-d03f7f709a09",
+      "name": "Has Records?",
+      "notesInFlow": true,
+      "notes": "True: something to sync. False: nothing changed - straight to Finish Run so the window still advances."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Resolve Plan   (all five HubSpot -> Simpro sync workflows)\n// Turns each changed HubSpot record into a plan for Simpro: where to create/update it, the body to send, and the\n// Simpro IDs of the records it links to (read from HubSpot in the previous steps). A record that cannot be sent\n// yet (for example its company is not in Simpro) is listed under `skipped`, never created half-linked.\n// One state item out; later nodes read it with $('Resolve Plan').first().\nconst cfg = $('Build Sync Window').first().json;\nconst { records } = $('Prepare Records').first().json;\nconst base = cfg.simproBaseUrl;\nconst blank = (v) => v === null || v === undefined || v === '' || v === 'null';\nconst safeAll = (name) => { try { return $(name).all(); } catch (e) { return []; } };\nconst idxOf = (item, k) => (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n\n// --- what each record is linked to in HubSpot: assoc[to][hubspotId] = [{ id, types:Set(typeId) }]\nconst assoc = { companies: {}, contacts: {}, '0-420': {}, line_items: {} };\nconst assocReqs = safeAll('Build Association Reads');\nsafeAll('Read Associations').forEach((item, k) => {\n  const meta = assocReqs[idxOf(item, k)].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return;\n  for (const row of ((r.body && r.body.results) || [])) {\n    assoc[meta.to][String(row.from.id)] = (row.to ?? []).map(t => ({ id: String(t.toObjectId), types: new Set((t.associationTypes ?? []).map(a => Number(a.typeId))) }));\n  }\n});\n\n// --- the Simpro ID of each related record, and the line item properties\nconst simproOf = { companies: {}, contacts: {}, '0-420': {} };\nconst lineItem = {};\nconst ID_PROP = { companies: 'simpro_customer_id', contacts: 'simpro_contact_id', '0-420': 'simpro_site_id' };\nconst relReqs = safeAll('Build Related Reads');\nsafeAll('Read Related Objects').forEach((item, k) => {\n  const meta = relReqs[idxOf(item, k)].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return;\n  for (const x of ((r.body && r.body.results) || [])) {\n    if (meta.type === 'line_items') lineItem[String(x.id)] = x.properties ?? {};\n    else if (!blank(x.properties && x.properties[ID_PROP[meta.type]])) simproOf[meta.type][String(x.id)] = String(x.properties[ID_PROP[meta.type]]);\n  }\n});\n// related records of one type that already have a Simpro ID, preferred association type first\nconst related = (hsId, to, preferType) => {\n  const list = (assoc[to][hsId] ?? []).filter(t => simproOf[to][t.id] !== undefined);\n  const preferred = preferType ? list.filter(t => t.types.has(preferType)) : [];\n  return [...preferred, ...list.filter(t => !preferred.includes(t))].map(t => simproOf[to][t.id]);\n};\nconst notInSimpro = (hsId, to) => (assoc[to][hsId] ?? []).filter(t => simproOf[to][t.id] === undefined).length;\n\n// --- SPL Users data table (HubSpot_ID -> Simpro_ID) for deal owners\nconst users = {};\nfor (const row of safeAll('Load SPL Users')) {\n  const j = row.json ?? {};\n  if (!blank(j.HubSpot_ID) && !blank(j.Simpro_ID)) users[String(j.HubSpot_ID)] = Number(j.Simpro_ID);\n}\nconst asDate = (v) => /^\\d+$/.test(String(v)) ? DateTime.fromMillis(Number(v), { zone: 'utc' }) : DateTime.fromISO(String(v), { zone: 'utc' });\nconst keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => !blank(v)));\n\nconst plan = [];\nconst skipped = [];\nfor (const rec of records) {\n  const p = rec.props;\n  const out = { hsId: rec.hsId, simproId: rec.simproId, name: '', createUrl: null, updateUrl: null, body: {}, createExtra: {}, links: null, customFields: [], lineItems: [], warnings: [] };\n  const skip = (reason) => skipped.push({ hsId: rec.hsId, reason });\n  const urlsFor = (collection) => { out.createUrl = collection + '/'; out.updateUrl = rec.simproId ? collection + '/' + rec.simproId : null; };\n\n  if (cfg.recordType === 'company') {\n    out.name = p.name ?? '';\n    urlsFor(base + '/companies/0/customers/companies');\n    out.body = {\n      CompanyName: p.name,\n      Address: { Address: p.address || '', City: p.city || '', State: p.state || '', PostalCode: p.zip || '', Country: p.country || '' },\n      BillingAddress: { Address: p.billing_address || '', City: p.billing_city || '', State: p.billing_state || '', PostalCode: p.billing_zip || p.billing_postalcode || '', Country: p.billing_country || '' }, // billing_zip is what the Simpro -> HubSpot sync writes\n      Phone: p.phone || '', Website: p.website || '', EIN: p.abn || '',\n    };\n  } else if (cfg.recordType === 'contact') {\n    out.name = [p.firstname, p.lastname].filter(Boolean).join(' ');\n    const customer = related(rec.hsId, 'companies', 1)[0]; // the primary company first\n    if (!customer) { skip('its company is not in Simpro yet (no Simpro customer ID)'); continue; }\n    urlsFor(base + '/companies/0/customers/' + customer + '/contacts');\n    out.body = { GivenName: p.firstname || '', FamilyName: p.lastname || '', Email: p.email || '', WorkPhone: p.phone || '', Title: p.salutation || '', Department: p.department || '', Position: p.jobtitle || '' };\n  } else if (cfg.recordType === 'site') {\n    out.name = p.hs_name ?? '';\n    urlsFor(base + '/companies/0/sites');\n    const address = keep({ Address: p.hs_address_1, City: p.hs_city, State: p.hs_state_province, PostalCode: p.hs_zip, Country: p.country });\n    const billing = keep({ Address: p.billing_address, City: p.billing_city, State: p.billing_state, PostalCode: p.billing_postal_code });\n    out.body = { ...keep({ Name: p.hs_name }), ...(blank(p.zone) ? {} : { Zone: Number(p.zone) }), ...(Object.keys(address).length ? { Address: address } : {}), ...(Object.keys(billing).length ? { BillingAddress: billing } : {}) };\n    out.links = { customers: related(rec.hsId, 'companies').map(Number), primaryContact: (related(rec.hsId, 'contacts')[0] ?? null) };\n    const missing = notInSimpro(rec.hsId, 'companies');\n    if (missing) out.warnings.push(missing + ' linked company(ies) not in Simpro yet - not linked');\n  } else { // quote or job\n    const isQuote = cfg.recordType === 'quote';\n    out.name = p.dealname ?? '';\n    const customer = related(rec.hsId, 'companies')[0];\n    const site = related(rec.hsId, '0-420')[0];\n    if (!customer || !site) { skip('its ' + (!customer ? 'company' : 'site') + ' is not in Simpro yet (no Simpro ID)'); continue; }\n    const contact = related(rec.hsId, 'contacts', cfg.decisionMakerTypeId)[0]; // the Decision Maker first, else the first contact\n    urlsFor(base + '/companies/' + cfg.simproCompanyId + (isQuote ? '/quotes' : '/jobs'));\n    out.body = {\n      Customer: Number(customer),\n      ...(contact ? { CustomerContact: Number(contact) } : {}),\n      Site: Number(site),\n      Name: p.dealname ?? '',\n      Description: p.simpro_description ?? '',\n      Notes: p.description ?? '',\n      ...(!isQuote && users[String(p.hubspot_owner_id)] ? { Salesperson: users[String(p.hubspot_owner_id)] } : {}),\n      ...(users[String(p.project_manager)] ? { ProjectManager: users[String(p.project_manager)] } : {}),\n      DueDate: p.due_date ? asDate(p.due_date).toFormat('yyyy-MM-dd') : null,\n      OrderNo: p.orderno ?? '',\n      ...(isQuote && p.validity ? { ValidityDays: Number(p.validity) } : {}),\n      Tags: (p.project_tags ?? '').split(';').filter(Boolean).map(Number),\n    };\n    // Only set when the record is CREATED: the type, and for quotes the sales person. The Simpro -> HubSpot quote mapping puts the\n    // PROJECT MANAGER in hubspot_owner_id (carried-over quirk), so syncing the owner back would overwrite a quote's real sales person.\n    out.createExtra = { Type: (isQuote ? p.quote_type : p.job_type) ?? '', ...(isQuote && users[String(p.hubspot_owner_id)] ? { Salesperson: users[String(p.hubspot_owner_id)] } : {}) };\n    if (isQuote) out.customFields = [\n      { id: cfg.customFields.tenderNumber, value: p.tender_number ?? '' },\n      { id: cfg.customFields.tenderStatus, value: p.tender_status ?? '' },\n      { id: cfg.customFields.vertical, value: p.vertical ?? '' },\n    ];\n    out.lineItems = (assoc.line_items[rec.hsId] ?? []).map(t => ({ id: t.id, ...(lineItem[t.id] ?? {}) }));\n  }\n  plan.push(out);\n}\nreturn [{ json: { records: plan, skipped } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        500
+      ],
+      "id": "ddf55ba4-9352-5b6b-864a-c3b4ef98214b",
+      "name": "Resolve Plan",
+      "notesInFlow": true,
+      "notes": "Per record: where to create/update it in Simpro, the body, and the Simpro IDs of what it links to. Records that cannot be sent yet (a missing parent) are listed, never created half-linked."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Simpro Reads   (all five HubSpot -> Simpro sync workflows)\n// Compare before write: for every record that already has a Simpro ID, read what Simpro holds today, so we only\n// write when something really differs. This is what stops the HubSpot <-> Simpro ping-pong. Reads are throttled.\nconst { records } = $('Resolve Plan').first().json;\nconst reads = records.filter(r => r.simproId).map(r => ({ json: { url: r.updateUrl, meta: { hsId: r.hsId } } }));\nif (reads.length === 0) return [{ json: { skip: true } }];\nreturn reads;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        500
+      ],
+      "id": "e4e0000a-1996-5d13-843a-99f6c4743c99",
+      "name": "Build Simpro Reads",
+      "notesInFlow": true,
+      "notes": "Compare before write: read what Simpro holds today for records that already have a Simpro ID (throttled, 5 per second)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "757057ec-9f8d-5bd1-92f2-4581cfc58c7e",
+              "leftValue": "={{ String($json.skip !== true) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        40,
+        500
+      ],
+      "id": "757057ec-9f8d-5bd1-92f2-4581cfc58c7e",
+      "name": "Any Records To Compare?",
+      "notesInFlow": true,
+      "notes": "True: there are existing records to read. False: only new records."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        500
+      ],
+      "id": "bf6a7de5-3358-5b18-95db-9778c3384136",
+      "name": "Read from Simpro",
+      "notesInFlow": true,
+      "notes": "Reads each existing record from Simpro so we only write what differs. 404 = deleted in Simpro (reported, not re-created).",
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Record Writes   (all five HubSpot -> Simpro sync workflows)\n// New record (no Simpro ID) -> create it. Existing record -> update ONLY the fields that differ from what Simpro\n// holds today (nothing to update = no call). A record Simpro no longer has (404) or could not be read is left alone\n// and reported by Finish Run; it is never re-created.\nconst cfg = $('Build Sync Window').first().json;\nconst plan = $('Resolve Plan').first().json.records;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\nconst safeAll = (name) => { try { return $(name).all(); } catch (e) { return []; } }; // [] when that stage did not run\nconst live = (name) => safeAll(name).filter(i => !(i.json && i.json.skip));\nconst idxOf = (item, k) => (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n// What Simpro holds today for each record we are updating (from Read from Simpro)\nconst current = {};\n{ const reqs = live('Build Simpro Reads');\n  live('Read from Simpro').forEach((item, k) => { const m = reqs[idxOf(item, k)].json.meta; const r = item.json ?? {}; if (r.statusCode === 200) current[m.hsId] = r.body; }); }\n// Simpro IDs created in this run (from Write Records to Simpro)\nconst created = {};\n{ const reqs = live('Build Record Writes');\n  live('Write Records to Simpro').forEach((item, k) => { const m = reqs[idxOf(item, k)].json.meta; const r = item.json ?? {};\n    if (m.kind === 'create' && (r.statusCode === 200 || r.statusCode === 201) && r.body && r.body.ID !== undefined) created[m.hsId] = String(r.body.ID); }); }\nconst finalId = (rec) => rec.simproId ?? created[rec.hsId] ?? null;\nconst recordUrl = (rec) => rec.createUrl.replace(/\\/$/, '') + '/' + finalId(rec);\n\n\nconst norm = (v) => (v === null || v === undefined) ? '' : String(v).trim();\nconst same = (want, have) => {\n  if (Array.isArray(want)) { // lists of IDs (tags)\n    const h = (Array.isArray(have) ? have : []).map(t => Number(t && t.ID !== undefined ? t.ID : t));\n    return JSON.stringify([...want].map(Number).sort()) === JSON.stringify(h.sort());\n  }\n  if (want !== null && typeof want === 'object') return Object.entries(want).every(([k, v]) => same(v, have ? have[k] : undefined));\n  if (have !== null && typeof have === 'object' && have.ID !== undefined) return norm(want) === norm(have.ID); // { ID } references\n  return norm(want) === norm(have);\n};\n\nconst writes = [];\nfor (const rec of plan) {\n  if (rec.simproId) {\n    const cur = current[rec.hsId];\n    if (!cur) continue; // gone in Simpro or unreadable: reported by Finish Run\n    const patch = {};\n    for (const [k, v] of Object.entries(rec.body)) if (!same(v, cur[k])) patch[k] = v;\n    if (Object.keys(patch).length) writes.push({ json: { method: 'PATCH', url: rec.updateUrl, body: patch, meta: { hsId: rec.hsId, kind: 'update', fields: Object.keys(patch) } } });\n  } else {\n    writes.push({ json: { method: 'POST', url: rec.createUrl, body: { ...rec.body, ...rec.createExtra }, meta: { hsId: rec.hsId, kind: 'create' } } });\n  }\n}\nif (writes.length === 0) return [{ json: { skip: true } }];\nreturn writes;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        500
+      ],
+      "id": "091059e5-553d-54f8-b88f-49ec8a44e0a0",
+      "name": "Build Record Writes",
+      "notesInFlow": true,
+      "notes": "New record -> create. Existing record -> update ONLY the fields that differ. Nothing differs = no call."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "dc14b7d5-da14-5c5a-a203-da01c5702bfd",
+              "leftValue": "={{ String($json.skip !== true) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        700,
+        500
+      ],
+      "id": "dc14b7d5-da14-5c5a-a203-da01c5702bfd",
+      "name": "Any Writes?",
+      "notesInFlow": true,
+      "notes": "True: something to create or update. False: Simpro is already up to date."
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        920,
+        500
+      ],
+      "id": "7f1c84db-f9b4-52db-b73c-8c363fdbba67",
+      "name": "Write Records to Simpro",
+      "notesInFlow": true,
+      "notes": "Creates (POST) or updates (PATCH), throttled to 5 per second. No automatic retry: a create must never run twice.",
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build ID Write-Back   (all five HubSpot -> Simpro sync workflows)\n// Right after a record is created in Simpro, save its new Simpro ID on the HubSpot record (batches of 100).\n// Doing this straight away is what prevents a second run from creating the same record in Simpro twice.\nconst cfg = $('Build Sync Window').first().json;\nconst plan = $('Resolve Plan').first().json.records;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\nconst safeAll = (name) => { try { return $(name).all(); } catch (e) { return []; } }; // [] when that stage did not run\nconst live = (name) => safeAll(name).filter(i => !(i.json && i.json.skip));\nconst idxOf = (item, k) => (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n// What Simpro holds today for each record we are updating (from Read from Simpro)\nconst current = {};\n{ const reqs = live('Build Simpro Reads');\n  live('Read from Simpro').forEach((item, k) => { const m = reqs[idxOf(item, k)].json.meta; const r = item.json ?? {}; if (r.statusCode === 200) current[m.hsId] = r.body; }); }\n// Simpro IDs created in this run (from Write Records to Simpro)\nconst created = {};\n{ const reqs = live('Build Record Writes');\n  live('Write Records to Simpro').forEach((item, k) => { const m = reqs[idxOf(item, k)].json.meta; const r = item.json ?? {};\n    if (m.kind === 'create' && (r.statusCode === 200 || r.statusCode === 201) && r.body && r.body.ID !== undefined) created[m.hsId] = String(r.body.ID); }); }\nconst finalId = (rec) => rec.simproId ?? created[rec.hsId] ?? null;\nconst recordUrl = (rec) => rec.createUrl.replace(/\\/$/, '') + '/' + finalId(rec);\n\n\nconst updates = Object.entries(created).map(([hsId, simproId]) => ({ id: hsId, properties: { [cfg.idProperty]: simproId } }));\nif (updates.length === 0) return [{ json: { skip: true } }];\nreturn chunk(updates, 100).map((part, n) => ({\n  json: { url: cfg.hubspotApiBase + '/' + cfg.objectPath + '/batch/update', body: { inputs: part }, meta: { batch: n + 1, count: part.length } },\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        500
+      ],
+      "id": "467bd6b9-3237-500f-89dc-04b9b48889c0",
+      "name": "Build ID Write-Back",
+      "notesInFlow": true,
+      "notes": "Saves the new Simpro IDs on the HubSpot records right after they are created (batches of 100), so a re-run cannot create them twice."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "40559c80-ddd2-5735-88c9-38ef1e1cf91f",
+              "leftValue": "={{ String($json.skip !== true) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1360,
+        500
+      ],
+      "id": "40559c80-ddd2-5735-88c9-38ef1e1cf91f",
+      "name": "Any IDs To Save?",
+      "notesInFlow": true,
+      "notes": "True: new Simpro IDs to save. False: nothing was created."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1580,
+        500
+      ],
+      "id": "e3e21467-3364-5c25-aa12-236d2c39a4f4",
+      "name": "Write IDs to HubSpot",
+      "notesInFlow": true,
+      "notes": "Batch update of the Simpro ID property on the HubSpot records.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Finish Run   (all five HubSpot -> Simpro sync workflows)\n// Runs ONCE per poll: when everything is done, or straight away when there was nothing to sync.\n// Looks at every call made in this run. If anything failed it fails the run (-> error workflow) and the window is\n// NOT advanced, so the next run retries it (writes are idempotent: existing records are only changed when they differ,\n// and new Simpro IDs are saved right after creation). Only a fully successful run advances the watermark.\nconst cfg = $('Build Sync Window').first().json;\nconst safeAll = (name) => { try { return $(name).all(); } catch (e) { return []; } };\nconst live = (name) => safeAll(name).filter(i => !(i.json && i.json.skip));\nconst idxOf = (item, k) => (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\nconst get = (name) => { try { return $(name).first().json; } catch (e) { return null; } };\n\nconst prep = get('Prepare Records');\nconst resolved = get('Resolve Plan');\n\n// every Simpro / HubSpot call of this run: [request node, response node, label]\nconst STAGES = [\n  ['Build Simpro Reads', 'Read from Simpro', 'read from Simpro'],\n  ['Build Record Writes', 'Write Records to Simpro', 'write to Simpro'],\n  ['Build ID Write-Back', 'Write IDs to HubSpot', 'save Simpro ID in HubSpot'],\n  ['Build Section Reads', 'Read Sections', 'read Simpro sections'],\n  ['Build Cost Center Reads', 'Read Cost Centers', 'read Simpro cost centers'],\n  ['Build Dependent Writes', 'Write Links and Cost Centers', 'links / custom fields / cost centers'],\n  ['Build Line Item Write-Back', 'Write Line Item IDs to HubSpot', 'save line item IDs in HubSpot'],\n];\nconst failures = [];\nconst gone = [];\nconst counts = { created: 0, updated: 0, siteLinks: 0, customFields: 0, costCentersCreated: 0, costCentersUpdated: 0 };\nfor (const [reqNode, resNode, label] of STAGES) {\n  const reqs = live(reqNode);\n  live(resNode).forEach((item, k) => {\n    const meta = (reqs[idxOf(item, k)] && reqs[idxOf(item, k)].json.meta) || {};\n    const r = item.json ?? {};\n    const who = meta.hsId ? 'HubSpot ' + meta.hsId : 'batch ' + (meta.batch ?? '?');\n    if (r.error !== undefined) { failures.push(label + ' (' + who + '): ' + (typeof r.error === 'string' ? r.error : JSON.stringify(r.error)).slice(0, 200)); return; }\n    const status = r.statusCode;\n    if (status === 404 && resNode === 'Read from Simpro') { gone.push(meta.hsId); return; } // deleted in Simpro: not retried forever\n    if (status >= 400 || status === undefined) { failures.push(label + ' (' + who + '): HTTP ' + status + ' ' + JSON.stringify(r.body).slice(0, 200)); return; }\n    const errs = r.body && Array.isArray(r.body.errors) ? r.body.errors : [];\n    if (errs.length) { failures.push(label + ' (' + who + '): ' + errs.slice(0, 2).map(e => e.message || JSON.stringify(e)).join(' | ')); return; }\n    if (meta.kind === 'create') counts.created++;\n    else if (meta.kind === 'update') counts.updated++;\n    else if (meta.kind === 'siteLinks') counts.siteLinks++;\n    else if (meta.kind === 'customField') counts.customFields++;\n    else if (meta.kind === 'costCenterCreate') counts.costCentersCreated++;\n    else if (meta.kind === 'costCenterUpdate') counts.costCentersUpdated++;\n  });\n}\nif (failures.length > 0) {\n  throw new Error(failures.length + ' call(s) failed for ' + cfg.label + ' in window ' + cfg.windowFrom + ' to ' + cfg.windowTo\n    + '. The window is NOT advanced, so the next run retries it.\\n' + failures.slice(0, 20).map(f => '- ' + f).join('\\n'));\n}\n\nconst state = $getWorkflowStaticData('global');\nstate.lastWindowEnd = cfg.windowTo; // only persists on production (trigger) runs\n\nconst skipped = (resolved && resolved.skipped) || [];\nconst warnings = ((resolved && resolved.records) || []).flatMap(r => (r.warnings ?? []).map(w => 'HubSpot ' + r.hsId + ': ' + w));\nreturn [{ json: {\n  status: 'ok',\n  recordType: cfg.recordType,\n  testOnly: cfg.testOnly,\n  changedInHubSpot: prep ? prep.counts.changedInHubSpot : 0,\n  skippedNonTest: prep ? prep.counts.skippedNonTest : 0,\n  ...counts,\n  skippedNotReady: skipped.length,\n  skippedDetails: skipped.slice(0, 25).map(s => 'HubSpot ' + s.hsId + ': ' + s.reason),\n  goneInSimpro: gone.length,\n  warnings: warnings.slice(0, 25),\n  windowFrom: cfg.windowFrom,\n  windowTo: cfg.windowTo,\n  windowStartedFrom: cfg.fromSource,\n  watermarkSavedTo: cfg.windowTo,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        500
+      ],
+      "id": "c33d63c2-38db-5ef9-8523-2a5423aa8b19",
+      "name": "Finish Run",
+      "notesInFlow": true,
+      "notes": "Once per poll. Fails the run if any call failed (window not advanced, next run retries); otherwise saves the new window end and returns a summary."
+    },
+    {
+      "parameters": {
+        "content": "## [SPL] HubSpot -> Simpro Companies Sync\nPushes HubSpot companies to Simpro. One workflow per record type, staggered in dependency order.\n\n**TEST MODE is ON** (Build Sync Window: `testOnly: true`): only test records (name starts with `HSTEST-`, or their own email domain is `aniccadigital.io` / `spl.com.au`) are sent to Simpro. Set it to `false` to send everything.\n\n**What it does:** reads the records changed in HubSpot since the last run (200 per call), compares with Simpro and creates or updates only what differs, saves new Simpro IDs on HubSpot, and sets the links. Records whose parent (company/site) is not in Simpro yet are skipped and listed in the run summary.\n\n**Before publishing (manual steps)**\n1. Connect `SPL Simpro` and `SPL Account` on every credentialed node and confirm no 'not connected' warning remains.\n2. Set Settings > Error Workflow.\n\n**First backfill:** set `windowStartOverride` (for example `2020-01-01T00:00:00Z`) for one run, then clear it.",
+        "height": 520,
+        "width": 760,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1500,
+        -300
+      ],
+      "id": "0a7f33ae-e8ac-5076-a345-05827d6ebd35",
+      "name": "Overview and checklist"
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Build Sync Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sync Window": {
+      "main": [
+        [
+          {
+            "node": "Find Changed Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Changed Records": {
+      "main": [
+        [
+          {
+            "node": "Prepare Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Records": {
+      "main": [
+        [
+          {
+            "node": "Has Records?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Records?": {
+      "main": [
+        [
+          {
+            "node": "Resolve Plan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Plan": {
+      "main": [
+        [
+          {
+            "node": "Build Simpro Reads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Simpro Reads": {
+      "main": [
+        [
+          {
+            "node": "Any Records To Compare?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Records To Compare?": {
+      "main": [
+        [
+          {
+            "node": "Read from Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Record Writes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read from Simpro": {
+      "main": [
+        [
+          {
+            "node": "Build Record Writes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record Writes": {
+      "main": [
+        [
+          {
+            "node": "Any Writes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Writes?": {
+      "main": [
+        [
+          {
+            "node": "Write Records to Simpro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build ID Write-Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Records to Simpro": {
+      "main": [
+        [
+          {
+            "node": "Build ID Write-Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build ID Write-Back": {
+      "main": [
+        [
+          {
+            "node": "Any IDs To Save?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any IDs To Save?": {
+      "main": [
+        [
+          {
+            "node": "Write IDs to HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write IDs to HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "pinData": {}
+}

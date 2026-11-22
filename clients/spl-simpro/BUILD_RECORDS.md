@@ -64,3 +64,23 @@ Rebuilt in place (workflow ID, name, webhook path `hubsput-upsert` and webhook I
 - **Observed payload:** `{ID: "job.status", name: "Job", action: "status", reference: {companyID: 4, jobID: 474119, statusID: 56}}`. No `created` sample, so the workflow keys on "not in HubSpot yet", not the event name. Simpro job payload fields used: `ConvertedFromQuote.ID`, `CustomerContact.ID`, `AdditionalContacts[].ID`.
 - **To confirm on the first real events:** (1) HubSpot search on `simpro_*_id` finds existing records; (2) Decision Maker ID 10 is accepted for deal -> contact in that direction (a 400 means the direction/ID is the other way round); (3) the Job/Quote label shows "Job" on the quote and "Quote" on the job (swap from/to in `build-associations.js` if reversed); (4) quotes carry `AdditionalContacts` like jobs do.
 - **Test rule in Real Time (SPL, 2026-11-22):** name starts with `HSTEST-` OR the record's own email domain is `aniccadigital.io` or `spl.com.au`, for every record type (`testNamePrefix` / `testEmailDomains` in `Workflow Config`). The batch syncs still use their own rules (`HS TEST - `, contacts also `spl.com`, quotes `HSTEST-`), so they do not match Real Time.
+
+
+---
+
+## 3. HubSpot -> Simpro batch sync (five workflows)
+*HubSpot -> Simpro. 5 workflows: Companies, Contacts, Sites, Quotes, Jobs Sync (`workflows/hubspot-to-simpro/spl__hubspot-simpro-<type>-sync__v1.json`). Client: SPL. Instance: n8n 2.45.5 (Cloud, v3 upgrade pending). Status: built, validated and simulated; NOT yet imported or run on SPL's instance. TEST MODE on.*
+
+**Workflow IDs**
+| Workflow | ID |
+|---|---|
+| (assigned at import; record here) | |
+
+**HubSpot** (credential `SPL Account`): pipelines Quote `default`, Jobs `2172954069`; Decision Maker label USER_DEFINED 10 (deal -> contact); unique Simpro-ID properties as in entry 1.
+**Simpro** (credential `SPL Simpro`): company 4 for quotes/jobs, 0 for customers/contacts/sites; contacts live under `customers/{customerId}/contacts`; custom fields Tender Number 35, Tender Status 36, Vertical 49.
+**Decisions (SPL, 2026-11-22):** all changed deals in the pipeline (window + one-off backfill via `windowStartOverride`); test-only rollout; compare-before-write; line item price written ex-GST; link only to records already in Simpro.
+**Known findings and open items**
+- Quote Salesperson is create-only (the Simpro -> HubSpot quote mapping stores the project manager in `hubspot_owner_id`). Fixing that mapping would allow syncing the Salesperson normally.
+- Verify on the first run: Simpro accepts `Total.ExTax` on cost centers; a site PATCH with both `Customers` and `PrimaryContact`; throttling option / cron / data table settings import intact.
+- A field cleared in Simpro is not cleared in HubSpot by the Simpro -> HubSpot sync (blanks are skipped), so HubSpot can send the old value back. Known limitation of the existing mapping.
+- The old HubSpot -> Simpro Scheduled Updates poller must be unpublished at cutover.
