@@ -6,9 +6,10 @@ const CONFIG = {
   simproBaseUrl: 'https://spl.simprosuite.com/api/v1.0',
   hubspotApiBase: 'https://api.hubapi.com',
   // --- Test-record rule (do not loosen without asking SPL) ---
-  testNamePrefix: 'HS TEST - ', // sites, companies, jobs (name starts with this, not case-sensitive)
-  quoteNamePrefix: 'HS TEST - ', // quotes. NOTE: the Quotes sync workflow uses 'HSTEST-'; change this to match if wanted
-  contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'], // contacts: email domain (exact, not case-sensitive)
+  // A record is a test record when EITHER its name starts with testNamePrefix OR its email (if it has one) has one
+  // of testEmailDomains. Both checks are case-insensitive; the domain must match exactly.
+  testNamePrefix: 'HSTEST-',
+  testEmailDomains: ['aniccadigital.io', 'spl.com.au'],
   // --- HubSpot object paths, unique Simpro-ID properties and association API names ---
   objects: {
     site: { path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id', assoc: '0-420' },
