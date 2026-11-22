@@ -55,3 +55,10 @@ Template (copy per automation):
 - First real run must confirm four assumptions that could only be simulated: (1) HubSpot batch upsert sets the unique ID property on create when `idProperty`/`id` is given and the property is not repeated in `properties`; (2) batch read by `idProperty` returns the just-written records; (3) v4 `associations/{from}/{to}/batch/read` returns `results[].from.id` + `to[].toObjectId`; (4) HTTP Request "Batching" (5 per 1000 ms), the Schedule Trigger cron field and Data Table "Return all" import with their values intact. Each failure mode is a loud error and does not advance the window.
 - Stale Contact-Site / Site-Contact links are no longer removed automatically (see `CLAUDE.md`).
 - The Quote workflow keeps the existing `ProjectManager.ID` lookup for both owner and project manager.
+
+
+### 2a. Real Time webhook: create and link only (edited 2026-11-22)
+Edited in place from the live export (real `Check Simpro Test Record` sub-workflow ID retained). Webhook path `hubsput-upsert` and webhook ID unchanged. 114 -> 62 nodes. Validated (1 ERROR: the known unauthenticated webhook, left on purpose) and simulated end to end (16 scenarios: new/existing/non-test for every type, missing related records skipped, email conflict, search error). Not yet imported or run on SPL's instance.
+- **Decisions (SPL, 2026-11-22):** link only to related records already in HubSpot; a contact's email and Simpro ID must match (no adopt-by-email in Real Time); leave webhook auth alone.
+- **Observed payload:** `{ID: "job.status", name: "Job", action: "status", reference: {companyID: 4, jobID: 474119, statusID: 56}}`. No `created` sample was available, so the workflow keys on "not in HubSpot yet", not the event name.
+- **To confirm on the first real events:** the HubSpot search on `simpro_*_id` finds existing records; the batch read by `idProperty` and batch associate respond as simulated.
