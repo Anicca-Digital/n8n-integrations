@@ -16,7 +16,7 @@ const CONFIG = {
   needsReadBack: true, // read the HubSpot IDs back after the write
   hubspotBatchSize: 100, // HubSpot batch limit
   // --- Test-record rule (do not loosen without asking SPL) ---
-  testRecords: { namePrefix: 'HS TEST - ', contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'] },
+  testRecords: { namePrefix: 'HSTEST-', contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'] },
   // --- Window ---
   overlapMinutes: 2, // re-read this far back from the last window end (clock skew / late commits). Writes are idempotent.
   initialLookbackMinutes: 35, // used when there is no saved watermark (first run, or any manual test run)
