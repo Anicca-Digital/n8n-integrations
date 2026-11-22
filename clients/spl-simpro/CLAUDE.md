@@ -28,7 +28,8 @@ Read this before editing anything in `clients/spl-simpro/`. Full detail is in `R
 Simpro -> HubSpot only processes test records (set in the Workflow Config node):
 - Contacts: email domain is `aniccadigital.io`, `spl.com` or `spl.com.au`.
 - Everything else: name starts with `HS TEST - `.
-- **Exception, Quotes Sync only (2026-11-22):** quote name starts with `HSTEST-` (any case; `HS TEST - ` no longer counts for quotes in that workflow). The Real Time workflow uses its own, different rule (name starts with `HSTEST-` OR email domain `aniccadigital.io` / `spl.com.au`, see the Real Time section). The sync workflows were NOT changed to match, so the two disagree for sites, companies, jobs and contacts until aligned.
+- **Exception, Companies Sync (2026-11-22):** same rule as Real Time: company name starts with `HSTEST-` OR the company's own `Email` has the domain `aniccadigital.io` or `spl.com.au` (exact domain, case-insensitive). `HS TEST - ` no longer counts for companies in that workflow. Set in `Build Sync Window` (`testRecords.namePrefix` and `testRecords.orEmailDomains`; the optional `orEmailDomains` rule lives in the shared `Select Test Records` code and is off unless a workflow sets it).
+- **Exception, Quotes Sync only (2026-11-22):** quote name starts with `HSTEST-` (any case; `HS TEST - ` no longer counts for quotes in that workflow). The Real Time workflow uses its own, different rule (name starts with `HSTEST-` OR email domain `aniccadigital.io` / `spl.com.au`, see the Real Time section). Only the Companies Sync was aligned to it; the Sites, Jobs and Contacts syncs still use their own rules, so they disagree with Real Time until aligned.
 Do not loosen this without asking.
 
 ## Importing

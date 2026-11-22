@@ -3,11 +3,15 @@
 // BEFORE anything is written to HubSpot. Same rule as [SPL] Check Simpro Test Record:
 //   Contacts: email domain is one of testRecords.contactEmailDomains (exact match, not case-sensitive).
 //   Everything else: name starts with testRecords.namePrefix (not case-sensitive).
+//   Optional extra rule (set per workflow in Build Sync Window, currently the Companies Sync only):
+//   testRecords.orEmailDomains = the record is ALSO a test record when its own Email has one of these domains
+//   (exact domain, not case-sensitive). Same rule as the Real Time workflow: name OR email domain.
 // Do not loosen this without asking SPL.
 const cfg = $('Build Sync Window').first().json;
 const ids = $('Build Record List').all().map(i => String(i.json.id));
 const prefix = String(cfg.testRecords.namePrefix).toLowerCase();
 const domains = cfg.testRecords.contactEmailDomains.map(d => String(d).trim().toLowerCase()).filter(Boolean);
+const orDomains = (cfg.testRecords.orEmailDomains ?? []).map(d => String(d).trim().toLowerCase()).filter(Boolean);
 
 const isTestRecord = (rec) => {
   if (cfg.recordType === 'contact') {
@@ -16,7 +20,11 @@ const isTestRecord = (rec) => {
     return domains.includes(domain);
   }
   const name = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();
-  return name.toLowerCase().startsWith(prefix);
+  if (name.toLowerCase().startsWith(prefix)) return true;
+  if (orDomains.length === 0) return false;
+  const ownEmail = String(rec.Email ?? '').trim().toLowerCase();
+  const ownDomain = ownEmail.includes('@') ? ownEmail.split('@').pop() : '';
+  return ownDomain !== '' && orDomains.includes(ownDomain);
 };
 
 const records = [];
