@@ -1,0 +1,846 @@
+{
+  "name": "[SPL] Simpro -> HubSpot Sites Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10,40 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1600,
+        400
+      ],
+      "id": "794aa203-0686-533b-b006-94bb3695dee5",
+      "name": "Every 30 Minutes",
+      "notesInFlow": true,
+      "notes": "Runs at :10 and :40 past the hour (production only - publish the workflow). Staggered so Companies run before Contacts, Sites, Quotes and Jobs."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Sync Window   ([SPL] Simpro -> HubSpot Sites Sync)\n// Sync window + config for this poller. Single source of truth: edit values HERE only.\n// The watermark lives in THIS workflow's own static data, so the five sync workflows never share a window.\nconst CONFIG = {\n  recordType: 'site', // company | contact | site | quote | job\n  label: 'Sites',\n  // --- Simpro ---\n  simproBaseUrl: 'https://spl.simprosuite.com/api/v1.0',\n  listPath: 'companies/0/sites/', // changed-since list (If-Modified-Since). Quotes and Jobs use Simpro company ID 4 (confirmed with SPL).\n  detailPath: 'companies/0/sites/', // + record ID = the full record\n  // --- HubSpot ---\n  hubspotApiBase: 'https://api.hubapi.com',\n  objectPath: 'crm/objects/2026-09/0-420',\n  assocObject: '0-420', // object type name used by the associations API\n  idProperty: 'simpro_site_id', // unique HubSpot property that holds the Simpro ID\n  needsReadBack: true, // read the HubSpot IDs back after the write\n  hubspotBatchSize: 100, // HubSpot batch limit\n  // --- Test-record rule (do not loosen without asking SPL) ---\n  testRecords: { namePrefix: 'HS TEST - ', contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'] },\n  // --- Window ---\n  overlapMinutes: 2, // re-read this far back from the last window end (clock skew / late commits). Writes are idempotent.\n  initialLookbackMinutes: 35, // used when there is no saved watermark (first run, or any manual test run)\n  windowStartOverride: '', // optional ISO date-time e.g. '2026-11-20T00:00:00Z' - forces the window start (backfill / recovery). Clear afterwards.\n};\n\nconst state = $getWorkflowStaticData('global'); // only persists on production (trigger) runs, not manual test runs\nconst now = new Date();\nlet from;\nlet fromSource;\n\nif (CONFIG.windowStartOverride) {\n  from = new Date(CONFIG.windowStartOverride);\n  if (isNaN(from.getTime())) {\n    throw new Error('windowStartOverride is not a valid ISO date-time: ' + CONFIG.windowStartOverride);\n  }\n  fromSource = 'override';\n} else if (state.lastWindowEnd) {\n  from = new Date(new Date(state.lastWindowEnd).getTime() - CONFIG.overlapMinutes * 60000);\n  fromSource = 'watermark';\n} else {\n  from = new Date(now.getTime() - CONFIG.initialLookbackMinutes * 60000);\n  fromSource = 'initial lookback';\n}\nif (from.getTime() >= now.getTime()) {\n  throw new Error('Sync window starts in the future (' + from.toISOString() + '). Check windowStartOverride and the saved watermark.');\n}\n\nreturn [{ json: {\n  ...CONFIG,\n  listUrl: CONFIG.simproBaseUrl + '/' + CONFIG.listPath,\n  detailUrlPrefix: CONFIG.simproBaseUrl + '/' + CONFIG.detailPath,\n  objectUrl: CONFIG.hubspotApiBase + '/' + CONFIG.objectPath,\n  windowFrom: from.toISOString(),\n  windowTo: now.toISOString(),\n  ifModifiedSince: from.toUTCString(), // Simpro If-Modified-Since needs an HTTP-date in GMT\n  fromSource,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1360,
+        400
+      ],
+      "id": "b6a04593-a901-568f-86ee-9794b5c62a8c",
+      "name": "Build Sync Window",
+      "notesInFlow": true,
+      "notes": "Config + time window: last saved window end minus 2 min (or last 35 min on the first run). Edit values here only."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.listUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "columns",
+              "value": "ID"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Modified-Since",
+              "value": "={{ $('Build Sync Window').first().json.ifModifiedSince }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !Array.isArray($response.body) || $response.body.length === 0 || ($response.headers['result-pages'] ? $pageCount >= Number($response.headers['result-pages']) : $response.body.length < 100) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 40,
+              "requestInterval": 150
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1120,
+        400
+      ],
+      "id": "744926e6-9742-5a01-b3f3-a1d4d10a3d22",
+      "name": "Fetch Changed Records",
+      "notesInFlow": true,
+      "notes": "Simpro Simpro sites modified since the window start (If-Modified-Since). IDs only, 100 per page.",
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Record List   (all five sync workflows)\n// Turns the paged \"changed since\" list from Simpro into ONE item per changed record ID (deduplicated).\n// FAN-OUT: everything after this runs once per item until Select Test Records collapses it again.\nconst cfg = $('Build Sync Window').first().json;\nconst pages = $('Fetch Changed Records').all().map(i => i.json); // one item per page (fullResponse)\n\nconst ids = [];\nconst seen = new Set();\nlet rows = 0;\nlet reportedTotal = null;\n\nfor (const page of pages) {\n  if (page.statusCode === 304) continue; // Simpro: nothing modified since the window start\n  if (page.statusCode !== 200) {\n    throw new Error('Fetch Changed Records: Simpro returned HTTP ' + page.statusCode + ' - ' + JSON.stringify(page.body).slice(0, 300));\n  }\n  if (!Array.isArray(page.body)) {\n    throw new Error('Fetch Changed Records: expected a JSON array from Simpro, got ' + typeof page.body);\n  }\n  if (reportedTotal === null && page.headers && page.headers['result-total'] !== undefined) {\n    reportedTotal = Number(page.headers['result-total']);\n  }\n  for (const row of page.body) {\n    if (row === null || typeof row !== 'object' || row.ID === undefined || row.ID === null) {\n      throw new Error('Fetch Changed Records: a returned record has no ID - check the columns=ID query parameter.');\n    }\n    rows++;\n    const id = String(row.ID);\n    if (seen.has(id)) continue;\n    seen.add(id);\n    ids.push(id);\n  }\n}\n\n// The pagination cap stops silently - fail loudly instead of syncing a partial window.\nif (reportedTotal !== null && rows < reportedTotal) {\n  throw new Error('Fetch Changed Records: read ' + rows + ' of ' + reportedTotal + ' changed ' + cfg.label\n    + ' (page cap of 40 x 100 reached). Shorten the window (windowStartOverride in Build Sync Window) or raise Max Pages on that node.');\n}\n\nif (ids.length === 0) {\n  return [{ json: { hasRecords: false, count: 0 } }];\n}\nreturn ids.map(id => ({ json: { hasRecords: true, id } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        400
+      ],
+      "id": "41a03ebb-c9ad-5841-8061-441a3e43ca38",
+      "name": "Build Record List",
+      "notesInFlow": true,
+      "notes": "FAN-OUT: one item per changed record ID. Fails loudly on a non-200 or a truncated page cap."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "295a288e-9fec-565e-a51f-6cdcbdb13054",
+              "leftValue": "={{ String($json.hasRecords) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -640,
+        400
+      ],
+      "id": "2e30b070-5e80-5fbe-a262-cdf604843732",
+      "name": "Has Records?",
+      "notesInFlow": true,
+      "notes": "True: at least one changed record. False: empty window - straight to Finish Run so the window still advances."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Sync Window').first().json.detailUrlPrefix }}{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -400,
+        400
+      ],
+      "id": "3ca7bcff-9e17-5c37-9e7f-d8a751b8bfc3",
+      "name": "Fetch Simpro Record Details",
+      "notesInFlow": true,
+      "notes": "Full Simpro record per ID, 5 requests per second. A failed fetch is carried forward (not thrown) so the rest still runs.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "SPL Simpro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Select Test Records   (all five sync workflows)\n// Collapses the per-record Simpro detail results into ONE item and applies the test-record rule\n// BEFORE anything is written to HubSpot. Same rule as [SPL] Check Simpro Test Record:\n//   Contacts: email domain is one of testRecords.contactEmailDomains (exact match, not case-sensitive).\n//   Everything else: name starts with testRecords.namePrefix (not case-sensitive).\n// Do not loosen this without asking SPL.\nconst cfg = $('Build Sync Window').first().json;\nconst ids = $('Build Record List').all().map(i => String(i.json.id));\nconst prefix = String(cfg.testRecords.namePrefix).toLowerCase();\nconst domains = cfg.testRecords.contactEmailDomains.map(d => String(d).trim().toLowerCase()).filter(Boolean);\n\nconst isTestRecord = (rec) => {\n  if (cfg.recordType === 'contact') {\n    const email = String(rec.Email ?? '').trim().toLowerCase();\n    const domain = email.includes('@') ? email.split('@').pop() : '';\n    return domains.includes(domain);\n  }\n  const name = String(rec.Name ?? rec.CompanyName ?? [rec.GivenName, rec.FamilyName].filter(Boolean).join(' ')).trim();\n  return name.toLowerCase().startsWith(prefix);\n};\n\nconst records = [];\nlet skippedNonTest = 0;\nconst skippedGone = [];\nconst failures = [];\n\n$input.all().forEach((item, k) => {\n  // With \"continue on error\" a failed fetch comes back as an item carrying `error`, paired to its input item.\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const simproId = ids[idx];\n  const j = item.json ?? {};\n  if (j.error !== undefined && (j.ID === undefined || j.ID === null)) {\n    const msg = typeof j.error === 'string' ? j.error : JSON.stringify(j.error);\n    if (/\\b404\\b|could not be found|not found/i.test(msg)) skippedGone.push(simproId); // deleted since it was listed\n    else failures.push({ type: cfg.recordType, id: simproId, error: msg.slice(0, 300) });\n    return;\n  }\n  if (j.ID === undefined || j.ID === null) {\n    failures.push({ type: cfg.recordType, id: simproId, error: 'Simpro returned a record with no ID' });\n    return;\n  }\n  if (isTestRecord(j)) records.push(j);\n  else skippedNonTest++;\n});\n\nreturn [{ json: { fetched: ids.length, records, skippedNonTest, skippedGone, failures } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        400
+      ],
+      "id": "8360a6c7-9769-5575-ba27-4d9c2367adc6",
+      "name": "Select Test Records",
+      "notesInFlow": true,
+      "notes": "Collapses to ONE item. Applies the test-record rule BEFORE anything is written to HubSpot."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9a3f35f1-de36-50bb-9a91-f4d05bebba62",
+              "leftValue": "={{ String(($json.records ?? []).length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        80,
+        400
+      ],
+      "id": "9b9a108e-c558-54e1-8520-7a5eceb752cd",
+      "name": "Any Test Records?",
+      "notesInFlow": true,
+      "notes": "True: at least one test record to sync. False: nothing to write - Finish Run."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Upsert Batches   ([SPL] Simpro -> HubSpot Sites Sync)\n// Simpro site -> HubSpot Site (0-420), keyed on the unique property simpro_site_id.\n// Same property mapping as [SPL] Upsert Site in HubSpot. One batch call per 100 sites.\nconst cfg = $('Build Sync Window').first().json;\nconst { records } = $('Select Test Records').first().json;\nconst blank = (v) => v === null || v === undefined || v === '' || v === 'null';\nconst keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => !blank(v)).map(([k, v]) => [k, String(v)]));\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst inputs = records.map((site) => ({\n  idProperty: cfg.idProperty,\n  id: String(site.ID), // the unique ID property is set from this on create\n  properties: keep({\n    hs_name: site.Name,\n    hs_address_1: site.Address?.Address,\n    hs_city: site.Address?.City,\n    hs_state_province: site.Address?.State,\n    hs_zip: site.Address?.PostalCode,\n    country: site.Address?.Country,\n    zone: site.Zone?.ID,\n    billing_address: site.BillingAddress?.Address,\n    billing_city: site.BillingAddress?.City,\n    billing_state: site.BillingAddress?.State,\n    billing_postal_code: site.BillingAddress?.PostalCode,\n  }),\n}));\n\nreturn chunk(inputs, cfg.hubspotBatchSize).map((part, n) => ({\n  json: { url: cfg.objectUrl + '/batch/upsert', body: { inputs: part }, meta: { kind: 'upsert', batch: n + 1, count: part.length } },\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        400
+      ],
+      "id": "4d951ad3-d0f3-5d2e-a478-2fdfedfbed86",
+      "name": "Build Upsert Batches",
+      "notesInFlow": true,
+      "notes": "One upsert per record on the unique simpro_site_id, chunked to 100 per call."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        560,
+        400
+      ],
+      "id": "12f05f3b-c64a-5b16-859b-9658aff188d0",
+      "name": "Upsert in HubSpot",
+      "notesInFlow": true,
+      "notes": "Batch upsert keyed on simpro_site_id. Idempotent, so it may retry.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Check Upsert Results   (all five sync workflows)\n// HubSpot batch endpoints answer 200/207 even when single records were rejected, so inspect every\n// response, and guard the count: if HubSpot returned a different number of results than we sent,\n// stop (the window is NOT advanced, the next run re-reads it; upserts are idempotent).\nconst cfg = $('Build Sync Window').first().json;\nconst { records } = $('Select Test Records').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\nconst errors = [];\nlet written = 0;\nfor (const item of $input.all()) {\n  const b = item.json ?? {};\n  const errs = Array.isArray(b.errors) ? b.errors : [];\n  if (errs.length || Number(b.numErrors) > 0) {\n    errors.push(...errs.map(e => (e && (e.message || e.category)) || JSON.stringify(e)));\n    if (!errs.length) errors.push('numErrors=' + b.numErrors);\n  }\n  written += Array.isArray(b.results) ? b.results.length : 0;\n}\nif (errors.length) {\n  throw new Error('HubSpot rejected part of the ' + cfg.label + ' batch. The window is NOT advanced. First errors: ' + errors.slice(0, 5).join(' | '));\n}\nif (written !== records.length) {\n  throw new Error('HubSpot returned ' + written + ' result(s) for ' + records.length + ' ' + cfg.label\n    + ' sent - NOT advancing the window. Re-run; if it repeats, check for duplicate Simpro IDs/emails in one batch.');\n}\n\n// ONE state item. When IDs are needed afterwards (associations / line items) it carries the read-back\n// requests: the HubSpot ID of every record, read by the unique Simpro ID property. Split Read-Back Requests\n// turns them into one item per batch call.\nconst requests = cfg.needsReadBack\n  ? chunk(records.map(r => ({ id: String(r.ID) })), cfg.hubspotBatchSize).map((part, n) => ({\n      url: cfg.objectUrl + '/batch/read',\n      body: { idProperty: cfg.idProperty, properties: [cfg.idProperty], inputs: part },\n      meta: { kind: 'readBack', batch: n + 1, count: part.length },\n    }))\n  : [];\nreturn [{ json: { written, requests } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        400
+      ],
+      "id": "a7fc904c-787d-535a-8c4d-635684dfcbcb",
+      "name": "Check Upsert Results",
+      "notesInFlow": true,
+      "notes": "Batch calls answer 2xx even when records are rejected: inspects every response and guards the result count. Emits ONE state item."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Split ... Requests   (all workflows that make batch calls)\n// Turns the ONE state item from the previous Code node into one item per HubSpot/Simpro call.\n// No requests = a single { skip: true } item, which the next \"Any ...?\" check routes around the call.\nconst requests = $input.first().json.requests ?? [];\nif (requests.length === 0) return [{ json: { skip: true } }];\nreturn requests.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        400
+      ],
+      "id": "9fc69c1f-e9e2-58ab-9ff4-d950c279b2a1",
+      "name": "Split Read-Back Requests",
+      "notesInFlow": true,
+      "notes": "One item per read-back batch call."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        400
+      ],
+      "id": "909a79a1-ab79-5bdd-96e7-0c60a4c70b43",
+      "name": "Read Back HubSpot IDs",
+      "notesInFlow": true,
+      "notes": "Batch read by the unique Simpro ID: gives the HubSpot ID of every record just written.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Build Association Reads   ([SPL] Simpro -> HubSpot Sites Sync)\n// 1) Turns the read-back answers into Simpro ID -> HubSpot ID for the records just written.\n// 2) Works out which related Simpro records each record should link to (LINKS below).\n// 3) Builds ONE set of read requests: the HubSpot IDs of the related records (by their unique Simpro ID\n//    property) and, for reconcile links, the links each record has in HubSpot right now.\nconst cfg = $('Build Sync Window').first().json;\nconst { records } = $('Select Test Records').first().json;\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\n\n// Link ownership (agreed with SPL): the CHILD record manages its own links, so two workflows never fight\n// over the same link. reconcile = keep matches, remove stale, add missing. addOnly = add missing, never remove.\nconst LINKS = [\n  // Site owns Site <-> Company (reconcile) ...\n  { key: 'company', toType: 'company', mode: 'reconcile', desired: (r) => (r.Customers ?? []).map(c => c.ID) },\n  // ... and makes sure its primary contact is linked (add-only: other contacts' links belong to the Contact workflow).\n  { key: 'primaryContact', toType: 'contact', mode: 'addOnly', desired: (r) => [r.PrimaryContact?.Contact?.ID] },\n];\n\nconst OBJECTS = {\n  company: { object: 'companies', path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },\n  contact: { object: 'contacts', path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },\n  site: { object: '0-420', path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },\n};\n\nconst hsIdBySimproId = {};\nfor (const item of $input.all()) {\n  const r = item.json ?? {};\n  if (r.statusCode !== 200 && r.statusCode !== 207) {\n    throw new Error('Read Back HubSpot IDs failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  for (const x of ((r.body && r.body.results) || [])) {\n    const sid = x.properties ? x.properties[cfg.idProperty] : undefined;\n    if (sid !== undefined && sid !== null) hsIdBySimproId[String(sid)] = String(x.id);\n  }\n}\nconst idMap = {};\nconst missing = [];\nfor (const r of records) {\n  const sid = String(r.ID);\n  if (hsIdBySimproId[sid] === undefined) missing.push(sid); else idMap[sid] = hsIdBySimproId[sid];\n}\nif (missing.length) {\n  throw new Error('HubSpot has no ' + cfg.label + ' record for Simpro ID ' + missing.slice(0, 10).join(', ')\n    + ' straight after the write - NOT advancing the window. Re-run.');\n}\n\nconst desired = {}; // linkKey -> simproId -> [related simpro ids]\nconst needed = {};  // toType -> Set(related simpro ids)\nfor (const l of LINKS) {\n  desired[l.key] = {};\n  for (const r of records) {\n    const ids = [...new Set((l.desired(r) ?? [])\n      .filter(v => v !== undefined && v !== null && v !== '').map(String))];\n    desired[l.key][String(r.ID)] = ids;\n    for (const id of ids) { (needed[l.toType] = needed[l.toType] ?? new Set()).add(id); }\n  }\n}\nconst plan = {\n  idMap,\n  desired,\n  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),\n};\n\nconst requests = [];\nfor (const [toType, set] of Object.entries(needed)) {\n  const o = OBJECTS[toType];\n  chunk([...set], cfg.hubspotBatchSize).forEach((part, n) => requests.push({\n    url: cfg.hubspotApiBase + '/' + o.path + '/batch/read',\n    body: { idProperty: o.idProperty, properties: [o.idProperty], inputs: part.map(id => ({ id })) },\n    meta: { kind: 'lookup', toType, idProperty: o.idProperty, batch: n + 1 },\n  }));\n}\nconst fromIds = Object.values(idMap);\nfor (const l of plan.links) {\n  if (l.mode !== 'reconcile') continue; // addOnly links never need the current links\n  chunk(fromIds, cfg.hubspotBatchSize).forEach((part, n) => requests.push({\n    url: cfg.hubspotApiBase + '/crm/v4/associations/' + l.fromObject + '/' + l.toObject + '/batch/read',\n    body: { inputs: part.map(id => ({ id })) },\n    meta: { kind: 'current', linkKey: l.key, batch: n + 1 },\n  }));\n}\nif (requests.length === 0) {\n  throw new Error('Build Association Reads produced no requests - check LINKS in this node.');\n}\n// ONE state item; Split Association Reads turns the requests into one item per call.\nreturn [{ json: { plan, requests } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        400
+      ],
+      "id": "37bf3e34-c007-583b-9c58-cf2d23fff577",
+      "name": "Build Association Reads",
+      "notesInFlow": true,
+      "notes": "Maps Simpro -> HubSpot IDs, decides the wanted links (LINKS in this node), builds the read requests. ONE state item."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Split ... Requests   (all workflows that make batch calls)\n// Turns the ONE state item from the previous Code node into one item per HubSpot/Simpro call.\n// No requests = a single { skip: true } item, which the next \"Any ...?\" check routes around the call.\nconst requests = $input.first().json.requests ?? [];\nif (requests.length === 0) return [{ json: { skip: true } }];\nreturn requests.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        400
+      ],
+      "id": "d4b86f9b-68a1-577e-867a-8f2575b9bef4",
+      "name": "Split Association Reads",
+      "notesInFlow": true,
+      "notes": "One item per read call."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2000,
+        400
+      ],
+      "id": "e989de46-7a7a-58b9-b619-6b79b7cd8a27",
+      "name": "Read HubSpot Lookups and Links",
+      "notesInFlow": true,
+      "notes": "Batch reads: HubSpot IDs of the related records + the links each record has now.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Plan Association Changes   (site, contact, quote and job workflows)\n// Reads the answers to Build Association Reads, then diffs what HubSpot links now with what Simpro says:\n//   reconcile links: keep matches, remove stale links, add missing ones.\n//   addOnly links:   add missing ones, never remove (a link owned by another workflow, or ambiguous).\n// A related record that is not in HubSpot yet is SKIPPED and reported in the run summary (warnings).\n// Output: ONE item { summary, requests } (requests may be empty = already in sync).\nconst cfg = $('Build Sync Window').first().json;\nconst plan = $('Build Association Reads').first().json.plan;\nconst built = $('Split Association Reads').all(); // the requests, in the order they were sent\nconst chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));\nconst okStatus = (s) => s === 200 || s === 207;\n\nconst lookup = {};  // toType -> { simproId: hubspotId }\nconst current = {}; // linkKey -> { fromHubspotId: Set(toHubspotId) }\nplan.links.forEach(l => { current[l.key] = {}; });\n\n$input.all().forEach((item, k) => {\n  const idx = (item.pairedItem && item.pairedItem.item !== undefined) ? item.pairedItem.item : k;\n  const meta = built[idx].json.meta;\n  const r = item.json ?? {};\n  if (r.statusCode === 404) return; // nothing found / no associations yet\n  if (!okStatus(r.statusCode)) {\n    throw new Error('HubSpot ' + meta.kind + ' read failed (HTTP ' + r.statusCode + '): ' + JSON.stringify(r.body).slice(0, 300));\n  }\n  const results = (r.body && Array.isArray(r.body.results)) ? r.body.results : [];\n  if (meta.kind === 'lookup') {\n    lookup[meta.toType] = lookup[meta.toType] ?? {};\n    for (const x of results) {\n      const simproId = x.properties ? x.properties[meta.idProperty] : undefined;\n      if (simproId !== undefined && simproId !== null) lookup[meta.toType][String(simproId)] = String(x.id);\n    }\n  } else {\n    for (const row of results) {\n      current[meta.linkKey][String(row.from && row.from.id)] = new Set((row.to ?? []).map(t => String(t.toObjectId)));\n    }\n  }\n});\n\nconst warnings = [];\nconst requests = [];\nlet removed = 0;\nlet added = 0;\n\nfor (const l of plan.links) {\n  const archiveInputs = [];\n  const addInputs = [];\n  for (const [simproId, fromHs] of Object.entries(plan.idMap)) {\n    const wantedHs = new Set();\n    for (const relatedSimproId of (plan.desired[l.key][simproId] ?? [])) {\n      const hs = lookup[l.toType] ? lookup[l.toType][relatedSimproId] : undefined;\n      if (hs) wantedHs.add(hs);\n      else warnings.push({ link: l.key, simproId, relatedSimproId, reason: 'related ' + l.toType + ' not in HubSpot yet - link skipped' });\n    }\n    const have = l.mode === 'reconcile' ? (current[l.key][fromHs] ?? new Set()) : new Set();\n    const rem = [...have].filter(id => !wantedHs.has(id));\n    const add = [...wantedHs].filter(id => !have.has(id));\n    if (rem.length) { archiveInputs.push({ from: { id: fromHs }, to: rem.map(id => ({ id })) }); removed += rem.length; }\n    for (const id of add) { addInputs.push({ from: { id: fromHs }, to: { id } }); added++; }\n  }\n  const base = cfg.hubspotApiBase + '/crm/v4/associations/' + l.fromObject + '/' + l.toObject;\n  chunk(archiveInputs, cfg.hubspotBatchSize).forEach((part, n) => requests.push({\n    url: base + '/batch/archive', body: { inputs: part }, meta: { kind: 'archive', link: l.key, batch: n + 1 } }));\n  chunk(addInputs, cfg.hubspotBatchSize).forEach((part, n) => requests.push({\n    url: base + '/batch/associate/default', body: { inputs: part }, meta: { kind: 'associate', link: l.key, batch: n + 1 } }));\n}\n\nconst summary = { removed, added, warningCount: warnings.length, warnings: warnings.slice(0, 50) };\n// ONE state item; Split Association Requests turns the requests into one item per batch call.\nreturn [{ json: { summary, requests } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        400
+      ],
+      "id": "7a703340-8623-51e3-9e88-88d2b8964bc9",
+      "name": "Plan Association Changes",
+      "notesInFlow": true,
+      "notes": "Diffs HubSpot links vs Simpro. Related records not in HubSpot yet are skipped and listed in the run summary. ONE state item."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Split ... Requests   (all workflows that make batch calls)\n// Turns the ONE state item from the previous Code node into one item per HubSpot/Simpro call.\n// No requests = a single { skip: true } item, which the next \"Any ...?\" check routes around the call.\nconst requests = $input.first().json.requests ?? [];\nif (requests.length === 0) return [{ json: { skip: true } }];\nreturn requests.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        400
+      ],
+      "id": "c6afcae1-0427-5c9f-9883-c318f7ff8264",
+      "name": "Split Association Requests",
+      "notesInFlow": true,
+      "notes": "One item per archive / associate batch call (none = already in sync)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1e25044b-95bd-53be-93a6-43f1a7787a6f",
+              "leftValue": "={{ String($json.skip !== true) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2720,
+        400
+      ],
+      "id": "6eaa7992-05f1-5614-bd4a-cd0a5f3dff13",
+      "name": "Any Association Changes?",
+      "notesInFlow": true,
+      "notes": "True: there are links to add or remove. False: already in sync."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2960,
+        200
+      ],
+      "id": "4a47952e-2b5b-59a4-ab3a-5e2dc5003dd7",
+      "name": "Apply Association Changes",
+      "notesInFlow": true,
+      "notes": "Batch archive (stale links) and batch associate (missing links), 100 per call. Idempotent, so it may retry.",
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "SPL Account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Check Association Results   (site, contact, quote and job workflows)\n// Reached either after Apply Association Changes or straight from \"no changes\" (skip item).\n// Batch endpoints answer 2xx even when single links were rejected, so inspect the bodies.\nlet summary = { removed: 0, added: 0, warningCount: 0, warnings: [] };\ntry { summary = $('Plan Association Changes').first().json.summary ?? summary; } catch (e) { /* not executed */ }\n\nconst errors = [];\nfor (const item of $input.all()) {\n  const b = item.json ?? {};\n  if (b.skip) continue;\n  const errs = Array.isArray(b.errors) ? b.errors : [];\n  if (errs.length || Number(b.numErrors) > 0) {\n    errors.push(...errs.map(e => (e && (e.message || e.category)) || JSON.stringify(e)));\n    if (!errs.length) errors.push('numErrors=' + b.numErrors);\n  }\n}\nif (errors.length) {\n  throw new Error('HubSpot rejected part of the association changes. The window is NOT advanced. First errors: ' + errors.slice(0, 5).join(' | '));\n}\nreturn [{ json: { associations: summary } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        400
+      ],
+      "id": "4ba0fbfe-e889-5566-a4e8-2cdac6132578",
+      "name": "Check Association Results",
+      "notesInFlow": true,
+      "notes": "Inspects the batch responses for rejected links."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: Finish Run   (all five sync workflows)\n// Runs ONCE per poll: when everything is done, or straight away when there was nothing to sync.\n// Fails the run (-> error workflow) if any record failed; only advances the watermark on full success.\nconst cfg = $('Build Sync Window').first().json;\nconst get = (name) => { try { return $(name).first().json; } catch (e) { return null; } }; // null when that branch did not run\n\nconst changed = $('Build Record List').all().filter(i => i.json.hasRecords === true).length;\nconst sel = get('Select Test Records');\nconst upsert = get('Check Upsert Results');\nconst assoc = get('Check Association Results');\nconst li = get('Check Line Item Results');\n\nconst failures = [...((sel && sel.failures) || []), ...((li && li.failures) || [])];\nif (failures.length > 0) {\n  const lines = failures.slice(0, 20).map(f => '- ' + f.type + ' ' + f.id + ': ' + f.error);\n  throw new Error(failures.length + ' ' + cfg.label + ' record(s) failed for window ' + cfg.windowFrom + ' to ' + cfg.windowTo\n    + '. The window is NOT advanced, so the next run re-reads it (writes are idempotent).\\n' + lines.join('\\n'));\n}\n\n// Full success: advance the watermark. Only persists on production (trigger) runs.\nconst state = $getWorkflowStaticData('global');\nstate.lastWindowEnd = cfg.windowTo;\n\nreturn [{ json: {\n  status: 'ok',\n  recordType: cfg.recordType,\n  changedInSimpro: changed,\n  syncedTestRecords: sel ? sel.records.length : 0,\n  skippedNonTest: sel ? sel.skippedNonTest : 0,\n  skippedGone: sel ? sel.skippedGone.length : 0,\n  writtenToHubSpot: upsert ? (upsert.written ?? 0) : 0,\n  associations: assoc ? assoc.associations : null,\n  lineItems: li ? li.lineItems : null,\n  windowFrom: cfg.windowFrom,\n  windowTo: cfg.windowTo,\n  windowStartedFrom: cfg.fromSource,\n  watermarkSavedTo: cfg.windowTo,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3440,
+        200
+      ],
+      "id": "a166a536-3154-5af5-a068-0179cd680cf2",
+      "name": "Finish Run",
+      "notesInFlow": true,
+      "notes": "Once per poll: throws if any record failed (window not advanced, next run retries it); otherwise saves the new window end."
+    },
+    {
+      "parameters": {
+        "content": "## [SPL] Simpro -> HubSpot Sites Sync\nReplaces the poll path of [SPL] Simpro -> HubSpot (Scheduled Updates) for Simpro sites.\n\n**Before publishing (manual steps)**\n1. Connect credentials on every credentialed node and confirm no 'not connected' warning remains: `SPL Simpro` (OAuth2) and `SPL Account` (HubSpot app token).\n2. Set Settings > Error Workflow on this workflow.\n3. Publish the five sync workflows, then UNPUBLISH the old [SPL] Simpro -> HubSpot (Scheduled Updates), otherwise records sync twice.\n\n**Behaviour**: only test records sync (see Build Sync Window). Window advances only after a fully successful run.",
+        "height": 330,
+        "width": 1900,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1600,
+        0
+      ],
+      "id": "2665d15e-275a-599c-aaa0-ef315d4dc0bb",
+      "name": "Overview and checklist"
+    },
+    {
+      "parameters": {
+        "content": "**FAN-OUT** at Build Record List: one item per changed record until Select Test Records collapses them into one item again. Everything after that is batched.",
+        "height": 120,
+        "width": 1100,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        800
+      ],
+      "id": "fd329894-0452-5726-9cce-4ff530be791b",
+      "name": "FAN-OUT note"
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Build Sync Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sync Window": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changed Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changed Records": {
+      "main": [
+        [
+          {
+            "node": "Build Record List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record List": {
+      "main": [
+        [
+          {
+            "node": "Has Records?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Records?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Simpro Record Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Simpro Record Details": {
+      "main": [
+        [
+          {
+            "node": "Select Test Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Test Records": {
+      "main": [
+        [
+          {
+            "node": "Any Test Records?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Test Records?": {
+      "main": [
+        [
+          {
+            "node": "Build Upsert Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Upsert Batches": {
+      "main": [
+        [
+          {
+            "node": "Upsert in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Check Upsert Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Upsert Results": {
+      "main": [
+        [
+          {
+            "node": "Split Read-Back Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Read-Back Requests": {
+      "main": [
+        [
+          {
+            "node": "Read Back HubSpot IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Back HubSpot IDs": {
+      "main": [
+        [
+          {
+            "node": "Build Association Reads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Association Reads": {
+      "main": [
+        [
+          {
+            "node": "Split Association Reads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Association Reads": {
+      "main": [
+        [
+          {
+            "node": "Read HubSpot Lookups and Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read HubSpot Lookups and Links": {
+      "main": [
+        [
+          {
+            "node": "Plan Association Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Association Changes": {
+      "main": [
+        [
+          {
+            "node": "Split Association Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Association Requests": {
+      "main": [
+        [
+          {
+            "node": "Any Association Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Association Changes?": {
+      "main": [
+        [
+          {
+            "node": "Apply Association Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Association Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Association Changes": {
+      "main": [
+        [
+          {
+            "node": "Check Association Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Association Results": {
+      "main": [
+        [
+          {
+            "node": "Finish Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "pinData": {}
+}

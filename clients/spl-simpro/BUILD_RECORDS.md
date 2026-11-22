@@ -35,3 +35,23 @@ Template (copy per automation):
 **Trigger definition**
 **Known findings and open items**
 - Validator (2026-11-09) on the existing exports: 12 ERRORs. 10 sub-workflow Execute Workflow Triggers lack `inputSource: "passthrough"`; the two real-time router webhooks have no authentication. No workflow sets `settings.errorWorkflow`. Not yet fixed; needs a decision.
+
+
+---
+
+## 2. Simpro -> HubSpot batch sync (five workflows)
+*Simpro -> HubSpot. 5 workflows: Companies, Contacts, Sites, Quotes, Jobs Sync (`workflows/simpro-to-hubspot/spl__simpro-hubspot-<type>-sync__v1.json`). Client: SPL. Instance: n8n 2.45.5 (v3 upgrade pending; Cloud vs self-hosted unconfirmed). Status: built, validated and simulated, NOT yet imported or run on SPL's instance.*
+
+**Workflow IDs**
+| Workflow | ID |
+|---|---|
+| (assigned at import; record here) | |
+
+**HubSpot** (credential `SPL Account`, `hubspotAppToken`): unique-value ID properties `simpro_customer_id` (companies), `simpro_contact_id` (contacts), `simpro_site_id` (0-420), `simpro_quote_id`, `simpro_job_id` (deals), all confirmed unique 2026-11-22. Quote deals: pipeline `default`, stages 3788243436 (to be completed/overdue), `closedwon`, `closedlost`, 3788243437 (default); Simpro custom fields Tender Number 35, Tender Status 36, Vertical 49. Job deals: pipeline 2172954069, stages 3783391728 (pending/default), 3783391729 (progress), 3783391730 (complete), 3783391734 (archived). Values copied from the existing `[SPL] Upsert Quote/Job in HubSpot` workflows.
+**Simpro** (credential `SPL Simpro`, OAuth2): `spl.simprosuite.com/api/v1.0`; company 4 for quotes and jobs (confirmed), 0 for customers, contacts, sites.
+**Data table:** `SPL Users` (ID `eEgc6EYXSSxSkc8D`, columns `Simpro_ID`, `HubSpot_ID`), read once per run by Quotes and Jobs.
+**Trigger definition:** cron per workflow (`0,30` / `5,35` / `10,40` / `15,45` / `20,50`), If-Modified-Since window with 2 min overlap, first run looks back 35 min.
+**Known findings and open items**
+- First real run must confirm four assumptions that could only be simulated: (1) HubSpot batch upsert sets the unique ID property on create when `idProperty`/`id` is given and the property is not repeated in `properties`; (2) batch read by `idProperty` returns the just-written records; (3) v4 `associations/{from}/{to}/batch/read` returns `results[].from.id` + `to[].toObjectId`; (4) HTTP Request "Batching" (5 per 1000 ms), the Schedule Trigger cron field and Data Table "Return all" import with their values intact. Each failure mode is a loud error and does not advance the window.
+- Stale Contact-Site / Site-Contact links are no longer removed automatically (see `CLAUDE.md`).
+- The Quote workflow keeps the existing `ProjectManager.ID` lookup for both owner and project manager.

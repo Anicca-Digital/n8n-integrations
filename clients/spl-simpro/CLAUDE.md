@@ -10,7 +10,7 @@ Read this before editing anything in `clients/spl-simpro/`. Full detail is in `R
 - `workflows/hubspot-to-simpro/`: HubSpot changes pushed into Simpro.
 - `workflows/simpro-to-hubspot/`: Simpro changes pushed into HubSpot.
 - `workflows/sub/`: sub-workflows (upserts) called by the routers.
-- `code-nodes/`: Code node JS extracted from workflows (empty for now).
+- `code-nodes/`: Code node JS extracted from workflows. `code-nodes/simpro-to-hubspot-sync/` holds every Code node of the five batch sync workflows (`common__*` are identical in all five, `<type>__*` are specific).
 
 ## Workflows
 | Folder | Workflow | Trigger |
@@ -19,6 +19,7 @@ Read this before editing anything in `clients/spl-simpro/`. Full detail is in `R
 | hubspot-to-simpro | [SPL] HubSpot-> Simpro (Real Time) | Webhook `POST /simpro-upsert`, or called by the poller. Router to the Simpro upsert sub-workflows, links associations, sends deals to Quote or Job by pipeline |
 | simpro-to-hubspot | [SPL] Simpro -> HubSpot (Scheduled Updates) | Every 30 min. Polls Simpro (If-Modified-Since) for changed Customers, Sites, Contacts, Quotes, Jobs |
 | simpro-to-hubspot | [SPL] Simpro -> HubSpot (Real Time) | Webhook `POST /hubsput-upsert`, or called by the poller. Skips non-test records, routes to the HubSpot upserts, then syncs associations |
+| simpro-to-hubspot | [SPL] Simpro -> HubSpot Companies / Contacts / Sites / Quotes / Jobs Sync (5 files, `spl__simpro-hubspot-<type>-sync__v1.json`) | Every 30 min, staggered :00 / :05 / :10 / :15 / :20 | Batch replacement for the poll path of the Simpro -> HubSpot Scheduled Updates workflow. Each polls one record type and writes to HubSpot in batches of 100. See "Batch sync workflows" below. Ship unpublished |
 | sub | [SPL] Check Simpro Test Record | Called by a workflow. Returns the Simpro record with `isTestRecord` |
 | sub | [SPL] Upsert Company / Contact / Site / Quote / Job in HubSpot | Called by a workflow. Simpro record to HubSpot |
 | sub | [SPL] Upsert Company / Contact / Site / Quote / Job in Simpro | Called by a workflow. HubSpot record to Simpro |
@@ -42,10 +43,13 @@ Read these before building or editing. An export in this folder always wins over
 | Error handler workflow ID | UNKNOWN (ask). No existing workflow sets `settings.errorWorkflow` |
 | Credential names (exact spelling) | `SPL Account` (HubSpot app token, `hubspotAppToken`), `SPL Simpro` (OAuth2) |
 | Consultant access level | UNKNOWN (ask) |
+| HubSpot Simpro ID properties | `simpro_customer_id` (companies), `simpro_contact_id` (contacts), `simpro_site_id` (Sites 0-420), `simpro_quote_id` and `simpro_job_id` (deals) are set to "require unique values" (confirmed by SPL 2026-11-22). The batch sync relies on this |
+| Simpro company ID for Quotes and Jobs | 4 (confirmed by SPL 2026-11-22). Customers, Contacts and Sites use the shared company 0 |
+| HubSpot automations on create/edit | None react to creates or edits (confirmed 2026-11-22) |
 
 Credential names and errorWorkflow state confirmed on 2026-11-09 from the workflow exports in `clients/spl-simpro/workflows/`. Version and hosting updated 2026-11-11 (see above). Resolved IDs go in `BUILD_RECORDS.md`.
 
-## Known validator findings (2026-11-09)
+## Known validator findings (2026-11-09, existing exports)
 `python3 shared/tools/validate_workflow.py` reports 12 ERRORs on the existing exports: 10 sub-workflow triggers missing `inputSource: "passthrough"`, and no authentication on the `/simpro-upsert` and `/hubsput-upsert` webhooks. Do not fix these as a side effect of another change; raise them first.
 
 ## n8n v3 readiness (2026-11-11)
@@ -55,3 +59,12 @@ Migration report `migration-report-v3-2026-11-11.csv` (instance 2.45.5): 25 work
 - Task runner timeout default 1 minute: low risk. 24 Code nodes, all small data-shaping JS with bounded loops and no network calls. Watch `Build Record List` in both Scheduled Updates workflows after upgrade if a run follows a long gap.
 - Workflow import from URL removed: import by JSON file only (see README).
 Not checked: workflow-level v3 changes (the CSV lists none). Open: confirm Cloud vs self-hosted and the upgrade date with the client.
+
+## Batch sync workflows (Simpro -> HubSpot, built 2026-11-22)
+Five workflows replace the poll path of `[SPL] Simpro -> HubSpot (Scheduled Updates)` (that file and the webhook `[SPL] Simpro -> HubSpot (Real Time)` router stay untouched). Companies :00/:30, Contacts :05/:35, Sites :10/:40, Quotes :15/:45, Jobs :20/:50 (dependency order). Each keeps its own watermark.
+- **Shape per run:** list changed IDs (If-Modified-Since) -> fetch details (5/s) -> test-record rule -> HubSpot batch upsert on the unique `simpro_*_id` (contacts: update found, upsert on email, create without email) -> read IDs back -> batch associations -> (Quotes/Jobs) rebuild line items from Simpro cost centers. Window advances only after a fully successful run.
+- **Link ownership (agreed 2026-11-22), the child record owns its links:** Companies own none. Sites reconcile Site-Company and add-only Site-primary Contact. Contacts reconcile Contact-Company and add-only Contact-Site. Quotes and Jobs reconcile their Site, Contact and Company. Stale Contact-Site / Site-Contact links are therefore not removed automatically (the old router made the two fight).
+- **Related record not in HubSpot yet:** that link is skipped and listed under `associations.warnings` in the Finish Run output. It is not created by the child's workflow. It heals when that record next changes.
+- **Carried over unchanged:** the Quote mapping looks up both owner and project manager with `ProjectManager.ID` (as `[SPL] Upsert Quote in HubSpot` does). Raise with SPL before changing.
+- **Cutover:** publish the five, unpublish the old Scheduled Updates workflow (otherwise records sync twice). Set `settings.errorWorkflow` on each (instance-specific ID).
+- **Editing:** change a Code node here AND in `code-nodes/simpro-to-hubspot-sync/` (the file name says which node).
