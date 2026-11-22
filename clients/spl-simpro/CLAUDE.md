@@ -10,14 +10,14 @@ Read this before editing anything in `clients/spl-simpro/`. Full detail is in `R
 - `workflows/hubspot-to-simpro/`: HubSpot changes pushed into Simpro.
 - `workflows/simpro-to-hubspot/`: Simpro changes pushed into HubSpot.
 - `workflows/sub/`: sub-workflows (upserts) called by the routers.
-- `code-nodes/hubspot-to-simpro-sync/` holds every Code node of the five HubSpot -> Simpro sync workflows.
+- `code-nodes/hubspot-to-simpro-sync/` holds every Code node of the five HubSpot -> Simpro sync workflows; `code-nodes/hubspot-to-simpro-realtime/` those of the HubSpot -> Simpro Real Time workflow.
 - `code-nodes/`: Code node JS extracted from workflows. `code-nodes/simpro-to-hubspot-sync/` holds every Code node of the five batch sync workflows (`common__*` are identical in all five, `<type>__*` are specific).
 
 ## Workflows
 | Folder | Workflow | Trigger |
 |---|---|---|
 | hubspot-to-simpro | [SPL] HubSpot -> Simpro (Scheduled Updates) | Every 30 min. Polls HubSpot for changed Companies, Sites, Contacts, Quote and Job deals and calls the Real Time router for each |
-| hubspot-to-simpro | [SPL] HubSpot-> Simpro (Real Time) | Webhook `POST /simpro-upsert`, or called by the poller. Router to the Simpro upsert sub-workflows, links associations, sends deals to Quote or Job by pipeline |
+| hubspot-to-simpro | [SPL] HubSpot-> Simpro (Real Time) | Webhook `POST /simpro-upsert` only | **Create only, companies / contacts / sites, self-contained (rebuilt 2026-11-22).** A test record that has no Simpro ID yet is created in Simpro and its ID saved on the HubSpot record. Deal events (quotes, jobs) are ignored. No sub-workflows. See "HubSpot -> Simpro Real Time" below |
 | hubspot-to-simpro | [SPL] HubSpot -> Simpro Companies / Contacts / Sites / Quotes / Jobs Sync (5 files, `spl__hubspot-simpro-<type>-sync__v1.json`) | Every 30 min, staggered :02 / :07 / :12 / :17 / :22 | Batch replacement for the poll path of the HubSpot -> Simpro Scheduled Updates workflow. TEST MODE on. See "HubSpot -> Simpro sync workflows" below. Ship unpublished |
 | simpro-to-hubspot | [SPL] Simpro -> HubSpot (Scheduled Updates) | Every 30 min. Polls Simpro (If-Modified-Since) for changed Customers, Sites, Contacts, Quotes, Jobs |
 | simpro-to-hubspot | [SPL] Simpro -> HubSpot (Real Time) | Webhook `POST /hubsput-upsert` only | **Create and link only, self-contained (rebuilt 2026-11-22).** A test record that is NOT yet in HubSpot is created and linked to the related records that already exist in HubSpot. No sub-workflows. See "Real Time" below |
@@ -110,3 +110,15 @@ Five workflows replace the poll path of `[SPL] HubSpot -> Simpro (Scheduled Upda
 - **Failures:** per-record failures do not stop the others; at the end the run fails (error workflow) and the window is NOT advanced, so the next run retries. Only a fully successful run advances the window.
 - **Cutover:** publish the five, unpublish the old `[SPL] HubSpot -> Simpro (Scheduled Updates)` (otherwise records sync twice). Set `settings.errorWorkflow` on each.
 - **Unverified on SPL's instance (simulated only), check on the first run:** Simpro accepts `Total.ExTax` when writing a cost center; one PATCH carrying both `Customers` and `PrimaryContact` on a site; the HTTP Request throttling option, the cron field and the Data Table "Return all" import intact.
+
+## HubSpot -> Simpro Real Time: create only (rebuilt 2026-11-22)
+`[SPL] HubSpot-> Simpro (Real Time)` was rebuilt in place (same file, workflow ID, webhook path `simpro-upsert` and webhook ID, so HubSpot's subscription URL stays valid). **No sub-workflows** (no more `[SPL] Upsert ... in Simpro`) and **no quote/job handling** (quotes and jobs are created in Simpro, not HubSpot): deal events end immediately. 22 nodes (was 40). The old `[SPL] Upsert Company/Contact/Site/Quote/Job in Simpro` sub-workflows are left in place, now unused.
+- **Create only:** a record is created in Simpro only if it has NO Simpro ID yet; one that already has one is left alone (the 30-minute HubSpot -> Simpro syncs update it). The event type does not matter (creation, edit, ...).
+- **Webhook payload:** HubSpot can send several events in one call; ALL are read (the old router read only the first), deduplicated, and read from HubSpot in batches (one read per record type). Deletions, deals, association-change events and anything without an `objectId` are ignored.
+- **TEST MODE is ON** (`testOnly: true` in `Workflow Config`): only records whose name starts with `HSTEST-`, or whose own email domain is `aniccadigital.io` / `spl.com.au`, are created. Set it to `false` to create everything.
+- **Per type:** Company: created as today. Contact: created UNDER its company, which must already have a Simpro customer ID, otherwise it is skipped and reported (`skippedDetails`), never created half-linked. Site: created, then linked to its associated companies that already have a Simpro ID, with a primary contact set from a HubSpot contact that already has a Simpro ID (one PATCH). Related records are never created.
+- **Duplicates:** the new Simpro ID is saved on the HubSpot record straight after creation (before the site links), so a repeated webhook cannot create a record twice. Simpro creates are not retried automatically and are throttled to 5 per second.
+- **Failures:** any failed call fails the run (error workflow) with the details at the end (`Report Result`); records that were created keep their saved IDs.
+- **Known gap:** a contact whose company is created in the SAME webhook call (or not yet in Simpro) is skipped and reported, and the Contacts sync only updates contacts that already have a Simpro ID, so it is not created later. To heal this, set `onlyAlreadyInSimpro: false` in the Contacts sync (it will then create contacts whose company has a Simpro ID; test mode still applies).
+- **Webhook:** still NO authentication in n8n (known open finding, deliberately left; HubSpot signs its calls, a signature check could be added later). The CI validator reports it as an ERROR on this file.
+- **Applying it:** open the live HubSpot -> Simpro Real Time workflow, select all, delete, import the file (keeps the same webhook), reconnect credentials, set the Error Workflow, publish. Optionally remove the deal subscriptions from the HubSpot app (they are ignored here).

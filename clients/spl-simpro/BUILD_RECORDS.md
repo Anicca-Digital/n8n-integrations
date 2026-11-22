@@ -84,3 +84,10 @@ Rebuilt in place (workflow ID, name, webhook path `hubsput-upsert` and webhook I
 - Verify on the first run: Simpro accepts `Total.ExTax` on cost centers; a site PATCH with both `Customers` and `PrimaryContact`; throttling option / cron / data table settings import intact.
 - A field cleared in Simpro is not cleared in HubSpot by the Simpro -> HubSpot sync (blanks are skipped), so HubSpot can send the old value back. Known limitation of the existing mapping.
 - The old HubSpot -> Simpro Scheduled Updates poller must be unpublished at cutover.
+
+
+### 3a. HubSpot -> Simpro Real Time webhook: create only, self-contained (rebuilt 2026-11-22)
+Rebuilt in place (workflow ID `vEEMhBa6bLX4uH7o`, name, webhook path `simpro-upsert` and webhook ID unchanged). 40 -> 22 nodes (plus a note), no sub-workflows, quotes/jobs removed. Validated (1 ERROR: the known unauthenticated webhook, left on purpose) and simulated end to end (14 scenarios). Not yet imported or run on SPL's instance.
+- **Decisions (SPL, 2026-11-22):** parent not in Simpro = skip and report; TEST MODE on; leave webhook auth alone; leave the old Upsert ... in Simpro sub-workflows in place.
+- **Payload observed:** HubSpot webhook, `body` is a list of events `{objectId, objectTypeId, subscriptionType}` (sites: `objectTypeId` `0-420`).
+- **To confirm on the first real events:** HubSpot batch read by ID (`properties` + `inputs`), v4 association batch read, and the HTTP throttling option import intact; the contact -> company link used to pick the Simpro customer.
