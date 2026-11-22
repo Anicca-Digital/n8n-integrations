@@ -1,4 +1,4 @@
-// Node: Build Association Reads   (contacts, sites, quotes and jobs)
+// Node: Build Association Reads   (companies, contacts, sites, quotes and jobs)
 // Which related HubSpot records does each changed record have? One batch read per association type (100 records per call).
 // Deals also read their line items. Always at least one request (this node only runs when there are records).
 const cfg = $('Build Sync Window').first().json;
@@ -6,6 +6,7 @@ const { records } = $('Prepare Records').first().json;
 const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
 
 const TO = {
+  company: ['0-420'], // a company is linked to its sites in Simpro
   contact: ['companies'],
   site: ['companies', 'contacts'],
   quote: ['companies', 'contacts', '0-420', 'line_items'],

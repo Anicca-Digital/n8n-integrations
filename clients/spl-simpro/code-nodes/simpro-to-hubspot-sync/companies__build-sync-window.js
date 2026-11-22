@@ -13,7 +13,7 @@ const CONFIG = {
   objectPath: 'crm/objects/2026-09/companies',
   assocObject: 'companies', // object type name used by the associations API
   idProperty: 'simpro_customer_id', // unique HubSpot property that holds the Simpro ID
-  needsReadBack: false, // read the HubSpot IDs back after the write
+  needsReadBack: true, // read the HubSpot IDs back after the write
   hubspotBatchSize: 100, // HubSpot batch limit
   // --- Test-record rule (do not loosen without asking SPL) ---
   testRecords: { namePrefix: 'HSTEST-', contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'], orEmailDomains: ['aniccadigital.io', 'spl.com.au'] },

@@ -70,6 +70,9 @@ for (const rec of records) {
       BillingAddress: { Address: p.billing_address || '', City: p.billing_city || '', State: p.billing_state || '', PostalCode: p.billing_zip || p.billing_postalcode || '', Country: p.billing_country || '' }, // billing_zip is what the Simpro -> HubSpot sync writes
       Phone: p.phone || '', Website: p.website || '', EIN: p.abn || '',
     };
+    out.links = { sites: related(rec.hsId, '0-420').map(Number) }; // the sites linked to this company that already have a Simpro ID
+    const missingSites = notInSimpro(rec.hsId, '0-420');
+    if (missingSites) out.warnings.push(missingSites + ' linked site(s) not in Simpro yet - not linked');
   } else if (cfg.recordType === 'contact') {
     out.name = [p.firstname, p.lastname].filter(Boolean).join(' ');
     const customer = related(rec.hsId, 'companies', 1)[0]; // the primary company first

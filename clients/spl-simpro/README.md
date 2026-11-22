@@ -50,7 +50,7 @@ Checked 2026-11-11 against the v3 migration report (instance on 2.45.5): 0 of 25
 
 ## Batch sync workflows (Simpro -> HubSpot)
 
-`spl__simpro-hubspot-{companies,contacts,sites,quotes,jobs}-sync__v1.json` replace the poll path of `[SPL] Simpro -> HubSpot (Scheduled Updates)`. They are standalone (no sub-workflow calls), write to HubSpot in batches of 100, run staggered in dependency order, and each keeps its own watermark. Their Code nodes live in `code-nodes/simpro-to-hubspot-sync/`. Behaviour, link ownership and caveats are in `CLAUDE.md`.
+`spl__simpro-hubspot-{companies,contacts,sites,quotes,jobs}-sync__v1.json` replace the poll path of `[SPL] Simpro -> HubSpot (Scheduled Updates)`. They are standalone (no sub-workflow calls), write to HubSpot in batches of 100, run staggered in dependency order, and each keeps its own watermark. Their Code nodes live in `code-nodes/simpro-to-hubspot-sync/`. Behaviour, linking (everything that already exists is linked, add-only) and caveats are in `CLAUDE.md`.
 
 Before publishing: connect the `SPL Simpro` and `SPL Account` credentials on every node and confirm no "not connected" warning remains, set the Error Workflow, check `Load SPL Users` (Quotes, Jobs) reads the SPL Users data table, publish the five, then **unpublish** the old Scheduled Updates workflow.
 

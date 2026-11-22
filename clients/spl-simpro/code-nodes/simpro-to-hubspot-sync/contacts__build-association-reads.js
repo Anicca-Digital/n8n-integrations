@@ -2,16 +2,17 @@
 // 1) Turns the read-back answers into Simpro ID -> HubSpot ID for the records just written.
 // 2) Works out which related Simpro records each record should link to (LINKS below).
 // 3) Builds ONE set of read requests: the HubSpot IDs of the related records (by their unique Simpro ID
-//    property) and, for reconcile links, the links each record has in HubSpot right now.
+//    property) and the links each record has in HubSpot right now (so only missing links are added).
 const cfg = $('Build Sync Window').first().json;
 const { records } = $('Select Test Records').first().json;
 const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
 
 // Link ownership (agreed with SPL): the CHILD record manages its own links, so two workflows never fight
-// over the same link. reconcile = keep matches, remove stale, add missing. addOnly = add missing, never remove.
+// over the same link. EVERY link is addOnly: add what is missing, never remove (a record is linked to everything it relates
+// to that already exists in HubSpot, whichever record was created first).
 const LINKS = [
   // Contact owns Contact <-> Company (reconcile) ...
-  { key: 'company', toType: 'company', mode: 'reconcile', desired: (r) => (r.Customers ?? []).map(c => c.ID) },
+  { key: 'company', toType: 'company', mode: 'addOnly', desired: (r) => (r.Customers ?? []).map(c => c.ID) },
   // ... and adds its sites (add-only: stale Contact <-> Site links are not removed automatically).
   { key: 'site', toType: 'site', mode: 'addOnly', desired: (r) => (r.Sites ?? []).map(s => s.ID) },
 ];
@@ -20,6 +21,7 @@ const OBJECTS = {
   company: { object: 'companies', path: 'crm/objects/2026-09/companies', idProperty: 'simpro_customer_id' },
   contact: { object: 'contacts', path: 'crm/objects/2026-09/contacts', idProperty: 'simpro_contact_id' },
   site: { object: '0-420', path: 'crm/objects/2026-09/0-420', idProperty: 'simpro_site_id' },
+  quote: { object: 'deals', path: 'crm/objects/2026-09/deals', idProperty: 'simpro_quote_id' }, // a quote is a deal
 };
 
 const hsIdBySimproId = {};
@@ -65,7 +67,7 @@ const plan = {
   idMap,
   desired,
   primary,
-  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, label: l.label ?? null, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),
+  links: LINKS.map(l => ({ key: l.key, toType: l.toType, mode: l.mode, label: l.label ?? null, quoteIsFrom: !!l.quoteIsFrom, fromObject: cfg.assocObject, toObject: OBJECTS[l.toType].object })),
 };
 
 const requests = [];
@@ -79,7 +81,6 @@ for (const [toType, set] of Object.entries(needed)) {
 }
 const fromIds = Object.values(idMap);
 for (const l of plan.links) {
-  if (l.mode !== 'reconcile') continue; // addOnly links never need the current links
   chunk(fromIds, cfg.hubspotBatchSize).forEach((part, n) => requests.push({
     url: cfg.hubspotApiBase + '/crm/v4/associations/' + l.fromObject + '/' + l.toObject + '/batch/read',
     body: { inputs: part.map(id => ({ id })) },

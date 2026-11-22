@@ -1,7 +1,7 @@
 // Node: Plan Association Changes   (site, contact, quote and job workflows)
-// Reads the answers to Build Association Reads, then diffs what HubSpot links now with what Simpro says:
-//   reconcile links: keep matches, remove stale links, add missing ones.
-//   addOnly links:   add missing ones, never remove (a link owned by another workflow, or ambiguous).
+// Reads the answers to Build Association Reads, then diffs what HubSpot links now with what Simpro says.
+// Every link is ADD-ONLY: a record is linked to EVERYTHING it relates to that already exists in HubSpot, whichever
+// record was created first; links that already exist are left alone and no link is ever removed.
 //   links with a `label` (Quote/Job -> Contact): the PRIMARY contact must carry the label (HubSpot user-defined
 //   association, e.g. Decision Maker); the other (additional) contacts are linked with NO label. A label limit of
 //   1-to-many means only one contact per deal can hold it, so a contact that holds the label but is no longer
@@ -57,6 +57,14 @@ for (const l of plan.links) {
   const labelInputs = [];
   const labelType = l.label ? l.label.types[0].associationTypeId : null;
   for (const [simproId, fromHs] of Object.entries(plan.idMap)) {
+    if (l.quoteIsFrom) { // a job's quote: the QUOTE deal is the FROM side of the labelled link (Job on the quote, Quote on the job)
+      for (const relatedSimproId of (plan.desired[l.key][simproId] ?? [])) {
+        const hs = lookup[l.toType] ? lookup[l.toType][relatedSimproId] : undefined;
+        if (!hs) { warnings.push({ link: l.key, simproId, relatedSimproId, reason: 'related ' + l.toType + ' not in HubSpot yet - link skipped' }); continue; }
+        if (!(current[l.key][fromHs] ?? new Set()).has(hs)) { labelInputs.push({ from: { id: hs }, to: { id: fromHs }, types: l.label.types }); added++; }
+      }
+      continue;
+    }
     const wantedHs = new Set();
     for (const relatedSimproId of (plan.desired[l.key][simproId] ?? [])) {
       const hs = lookup[l.toType] ? lookup[l.toType][relatedSimproId] : undefined;
@@ -65,10 +73,10 @@ for (const l of plan.links) {
     }
     const primarySimproId = l.label ? (plan.primary[l.key][simproId] ?? null) : null;
     const primaryHs = primarySimproId && lookup[l.toType] ? (lookup[l.toType][primarySimproId] ?? null) : null;
-    const have = l.mode === 'reconcile' ? (current[l.key][fromHs] ?? new Set()) : new Set();
+    const have = current[l.key][fromHs] ?? new Set();
     const types = (haveTypes[l.key] && haveTypes[l.key][fromHs]) || {};
 
-    const rem = [...have].filter(id => !wantedHs.has(id));
+    const rem = l.mode === 'reconcile' ? [...have].filter(id => !wantedHs.has(id)) : []; // no link uses 'reconcile' any more
     // holds the label but is not (or no longer) the primary: unlink, then re-link without a label below
     const dropLabel = l.label ? [...have].filter(id => wantedHs.has(id) && id !== primaryHs && types[id] && types[id].has(labelType)) : [];
     const toArchive = [...rem, ...dropLabel];
@@ -83,7 +91,7 @@ for (const l of plan.links) {
       added++;
     }
   }
-  const base = cfg.hubspotApiBase + '/crm/v4/associations/' + l.fromObject + '/' + l.toObject;
+  const base = cfg.hubspotApiBase + '/crm/v4/associations/' + l.fromObject + '/' + l.toObject; // quote -> job is deals/deals either way
   // Order matters (requests run in order): archive first, then unlabelled adds, then the labelled primary.
   chunk(archiveInputs, cfg.hubspotBatchSize).forEach((part, n) => requests.push({
     url: base + '/batch/archive', body: { inputs: part }, meta: { kind: 'archive', link: l.key, batch: n + 1 } }));

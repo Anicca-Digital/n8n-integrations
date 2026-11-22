@@ -1,5 +1,6 @@
-// Node: Build Dependent Writes   (sites, quotes and jobs)
+// Node: Build Dependent Writes   (companies, sites, quotes and jobs)
 // Everything that needs the record's Simpro ID to exist first, in one list (items run in order):
+//   companies: link the company to its sites that are in Simpro (only ADD, never remove)
 //   sites:   link the site to its customers (only ADD, never remove) and set its primary contact only when Simpro has none
 //   quotes:  the Tender Number / Tender Status / Vertical custom fields, only when they differ
 //   deals:   line items -> Simpro cost centers: update the ones whose price/name differ, create the new ones in the
@@ -45,6 +46,12 @@ for (const rec of plan) {
   const id = finalId(rec);
   if (!id) continue; // the create failed: reported by Finish Run
   const cur = current[rec.hsId];
+
+  if (cfg.recordType === 'company' && rec.links) {
+    const haveSites = ((cur && cur.Sites) || []).map(s => Number(s.ID));
+    const addSites = rec.links.sites.filter(s => !haveSites.includes(s));
+    if (addSites.length) writes.push({ json: { method: 'PATCH', url: recordUrl(rec), body: { Sites: [...haveSites, ...addSites] }, meta: { hsId: rec.hsId, kind: 'companySites' } } });
+  }
 
   if (cfg.recordType === 'site' && rec.links) {
     const haveCustomers = ((cur && cur.Customers) || []).map(c => Number(c.ID));

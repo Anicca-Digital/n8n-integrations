@@ -24,7 +24,7 @@ const STAGES = [
 ];
 const failures = [];
 const gone = [];
-const counts = { created: 0, updated: 0, siteLinks: 0, customFields: 0, costCentersCreated: 0, costCentersUpdated: 0 };
+const counts = { created: 0, updated: 0, siteLinks: 0, companySites: 0, customFields: 0, costCentersCreated: 0, costCentersUpdated: 0 };
 for (const [reqNode, resNode, label] of STAGES) {
   const reqs = live(reqNode);
   live(resNode).forEach((item, k) => {
@@ -40,6 +40,7 @@ for (const [reqNode, resNode, label] of STAGES) {
     if (meta.kind === 'create') counts.created++;
     else if (meta.kind === 'update') counts.updated++;
     else if (meta.kind === 'siteLinks') counts.siteLinks++;
+    else if (meta.kind === 'companySites') counts.companySites++;
     else if (meta.kind === 'customField') counts.customFields++;
     else if (meta.kind === 'costCenterCreate') counts.costCentersCreated++;
     else if (meta.kind === 'costCenterUpdate') counts.costCentersUpdated++;

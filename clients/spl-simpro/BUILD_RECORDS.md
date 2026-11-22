@@ -91,3 +91,5 @@ Rebuilt in place (workflow ID `vEEMhBa6bLX4uH7o`, name, webhook path `simpro-ups
 - **Decisions (SPL, 2026-11-22):** parent not in Simpro = skip and report; TEST MODE on; leave webhook auth alone; leave the old Upsert ... in Simpro sub-workflows in place.
 - **Payload observed:** HubSpot webhook, `body` is a list of events `{objectId, objectTypeId, subscriptionType}` (sites: `objectTypeId` `0-420`).
 - **To confirm on the first real events:** HubSpot batch read by ID (`properties` + `inputs`), v4 association batch read, and the HTTP throttling option import intact; the contact -> company link used to pick the Simpro customer.
+
+- **Linking changed to add-only everywhere (SPL, 2026-11-22):** Simpro -> HubSpot syncs now link every record to everything it relates to that exists in HubSpot (Companies also link contacts and sites; Jobs also link their quote), never removing links; HubSpot -> Simpro Companies now add their sites to the Simpro customer. Not done: additional contacts and the quote <-> job link towards Simpro (no confirmed Simpro write format).
