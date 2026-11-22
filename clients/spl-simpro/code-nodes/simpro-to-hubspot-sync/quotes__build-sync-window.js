@@ -16,7 +16,7 @@ const CONFIG = {
   needsReadBack: true, // read the HubSpot IDs back after the write
   hubspotBatchSize: 100, // HubSpot batch limit
   // --- Test-record rule (do not loosen without asking SPL) ---
-  testRecords: { namePrefix: 'HS TEST - ', contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'] },
+  testRecords: { namePrefix: 'HSTEST-', contactEmailDomains: ['aniccadigital.io', 'spl.com', 'spl.com.au'] },
   deal: {
     pipeline: 'default',
     stageToBeCompleted: '3788243436', // Quote to be completed / Quote overdue

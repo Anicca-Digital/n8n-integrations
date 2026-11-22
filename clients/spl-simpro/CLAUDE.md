@@ -28,6 +28,7 @@ Read this before editing anything in `clients/spl-simpro/`. Full detail is in `R
 Simpro -> HubSpot only processes test records (set in the Workflow Config node):
 - Contacts: email domain is `aniccadigital.io`, `spl.com` or `spl.com.au`.
 - Everything else: name starts with `HS TEST - `.
+- **Exception, Quotes Sync only (2026-11-22):** quote name starts with `HSTEST-` (any case; `HS TEST - ` no longer counts for quotes in that workflow). The Real Time workflow still applies `HS TEST - ` to quotes via `[SPL] Check Simpro Test Record`; the two do not agree until that is changed too.
 Do not loosen this without asking.
 
 ## Importing
