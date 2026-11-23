@@ -23,6 +23,8 @@ const CONFIG = {
     stageProgress: '3783391729',
     stageComplete: '3783391730',
     stageArchived: '3783391734',
+    stageInvoiced: '3783391733', // used when the job Status is one of invoicedStatuses (overrides Stage)
+    invoicedStatuses: ['job paid', 'job invoiced'],
     stageDefault: '3783391728',
   },
   // --- Window ---

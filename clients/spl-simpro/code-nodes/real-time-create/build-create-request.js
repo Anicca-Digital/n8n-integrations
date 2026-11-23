@@ -86,9 +86,11 @@ switch (cfg.type) {
     const d = cfg.job;
     const stages = { pending: d.stagePending, progress: d.stageProgress, complete: d.stageComplete, archived: d.stageArchived };
     const stageKey = String(rec.Stage ?? '').trim().toLowerCase();
+    // Job status Job Paid / Job Invoiced wins over the Stage
+    const statusKey = String(rec.Status?.Name ?? '').trim().toLowerCase();
     properties = {
       dealname: rec.Name, amount: rec.Total?.ExTax, description: rec.Notes ?? '', pipeline: d.pipeline,
-      dealstage: stages[stageKey] ?? d.stageDefault,
+      dealstage: d.invoicedStatuses.includes(statusKey) ? d.stageInvoiced : (stages[stageKey] ?? d.stageDefault),
       hubspot_owner_id: users[String(rec.Salesperson?.ID)], project_manager: users[String(rec.ProjectManager?.ID)],
       simpro_job_id: String(rec.ID), approved_date: day(rec.DateApproved), due_date: day(rec.DueDate),
       orderno: rec.OrderNo ?? '', simpro_description: rec.Description ?? '',

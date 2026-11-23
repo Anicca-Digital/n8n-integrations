@@ -91,6 +91,9 @@ Five workflows replace the poll path of `[SPL] Simpro -> HubSpot (Scheduled Upda
 - **No longer used by Real Time (left in place, safe to archive):** `[SPL] Check Simpro Test Record` and the five `[SPL] Upsert ... in HubSpot` sub-workflows. The old `[SPL] Simpro -> HubSpot (Scheduled Updates)` poller can no longer call Real Time (its trigger is gone) and must stay unpublished.
 - **Applying it:** open the live Real Time workflow, select all, delete, import the file (keeps the same webhook), reconnect credentials, check `Load SPL Users` reads the SPL Users data table, set the Error Workflow, then publish.
 
+## Job deal stage (Simpro -> HubSpot)
+Job deals take the stage from the Simpro job Stage (Pending/Progress/Complete/Archived). **Override (2026-11-23):** if the job Status name is `Job Paid` or `Job Invoiced` (case/space-insensitive), the deal goes to stage `3783391733` regardless of Stage. Config: `stageInvoiced` + `invoicedStatuses` in the Jobs sync `Build Sync Window` and the Real Time `Workflow Config`.
+
 ## Amounts: GST-exclusive line items (Simpro -> HubSpot, 2026-11-22)
 Quote and Job deals: `amount` is the Simpro `Total.ExTax` (always was). Line item `price` is now the cost center's GST-exclusive `Total.ExTax` (was `Total.IncTax`). Changed in the Quotes Sync, the Jobs Sync, `[SPL] Upsert Quote in HubSpot` and `[SPL] Upsert Job in HubSpot` (the last two are no longer used by Real Time, which now creates line items itself with the same ex-GST price).
 - **KNOWN MISMATCH, deliberately not changed:** `[SPL] Upsert Quote in Simpro` and `[SPL] Upsert Job in Simpro` (HubSpot -> Simpro) still write a line item's price to Simpro as `Total: { IncTax: price }`. With ex-GST prices in HubSpot, syncing line items back would store an ex-GST amount as GST-inclusive. Keep the HubSpot -> Simpro line item sync off, or change those two nodes (needs a confirmed Simpro cost center `Total.ExTax` write) before using it.

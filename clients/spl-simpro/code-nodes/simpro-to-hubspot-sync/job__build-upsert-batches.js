@@ -22,6 +22,9 @@ const stages = {
 
 const inputs = records.map((job) => {
   const stageKey = String(job.Stage ?? '').trim().toLowerCase();
+  // Job status Job Paid / Job Invoiced wins over the Stage (cfg.deal.invoicedStatuses -> stageInvoiced)
+  const statusKey = String(job.Status?.Name ?? '').trim().toLowerCase();
+  const dealstage = cfg.deal.invoicedStatuses.includes(statusKey) ? cfg.deal.stageInvoiced : (stages[stageKey] ?? cfg.deal.stageDefault);
   return {
     idProperty: cfg.idProperty,
     id: String(job.ID),
@@ -30,7 +33,7 @@ const inputs = records.map((job) => {
       amount: job.Total?.ExTax,
       description: job.Notes ?? '',
       pipeline: cfg.deal.pipeline,
-      dealstage: stages[stageKey] ?? cfg.deal.stageDefault,
+      dealstage,
       hubspot_owner_id: users[String(job.Salesperson?.ID)],
       project_manager: users[String(job.ProjectManager?.ID)],
       approved_date: day(job.DateApproved),
