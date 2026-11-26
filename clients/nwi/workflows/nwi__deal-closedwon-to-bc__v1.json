@@ -67,9 +67,9 @@
     },
     {
       "parameters": {
-        "content": "## 4. Business Central contact = HubSpot CONTACT\nContact has a BC ID: find + update. No BC ID: create under the customer's company contact, then write the contact number to the contact's business_central_record_id. Then set it as the customer's primary contact and as the sales order's contact. Runs after the order, so a failure here never blocks the order.",
+        "content": "## 4. Business Central contact = HubSpot CONTACT\nContact has a BC ID: find + update. No BC ID: create under the customer's company contact, then write the contact number to the contact's business_central_record_id. Then copy its segment and sub segment to the BC contact card, set it as the customer's primary contact and as the sales order's contact. Runs after the order, so a failure here never blocks the order.",
         "height": 800,
-        "width": 2972,
+        "width": 3420,
         "color": 3
       },
       "name": "Section 4 - BC contact",
@@ -138,13 +138,13 @@
             {
               "id": "81419093-04e2-5cca-8c95-d39c34bd8b56",
               "name": "hsCompanyProperties",
-              "value": "name,address,city,state,zip,country,phone,website,email,invoice_email,abn,segment,responsibility_center,location_code,business_central_id",
+              "value": "name,address,city,state,zip,country,phone,website,email,invoice_email,abn,segment,responsibility_center,location_code,business_central_id,sub_segement",
               "type": "string"
             },
             {
               "id": "d70e3a94-edef-50f1-a155-5f5fdc004ea3",
               "name": "hsContactProperties",
-              "value": "firstname,lastname,email,phone,mobilephone,business_central_record_id",
+              "value": "firstname,lastname,email,phone,mobilephone,business_central_record_id,segment,sub_segment",
               "type": "string"
             },
             {
@@ -158,6 +158,12 @@
               "name": "countryMap",
               "value": "{\"australia\":\"AU\",\"new zealand\":\"NZ\",\"united states\":\"US\",\"united kingdom\":\"GB\",\"singapore\":\"SG\"}",
               "type": "object"
+            },
+            {
+              "id": "4eaa910d-9fd9-574f-a1b4-fa83c65bd765",
+              "name": "bcContactPage",
+              "value": "Contact_Card",
+              "type": "string"
             }
           ]
         },
@@ -709,7 +715,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  \"Name\": $('Get Company').first().json.properties.name,\n  \"Address\": $('Get Company').first().json.properties.address || undefined,\n  \"City\": $('Get Company').first().json.properties.city || undefined,\n  \"County\": $('Get Company').first().json.properties.state || undefined,\n  \"Post_Code\": $('Get Company').first().json.properties.zip || undefined,\n  \"Country_Region_Code\": (/^[A-Za-z]{2}$/.test($('Get Company').first().json.properties.country || \"\") ? $('Get Company').first().json.properties.country.toUpperCase() : $('Workflow Config').first().json.countryMap[String($('Get Company').first().json.properties.country || \"\").toLowerCase()]),\n  \"Phone_No\": $('Get Company').first().json.properties.phone || undefined,\n  \"E_Mail\": $('Get Company').first().json.properties.email || undefined,\n  \"Invoice_Email\": $('Get Company').first().json.properties.invoice_email || undefined,\n  \"Home_Page\": $('Get Company').first().json.properties.website || undefined,\n  \"Segment\": $('Get Company').first().json.properties.segment || undefined,\n  \"Responsibility_Center\": $('Get Company').first().json.properties.responsibility_center || undefined,\n  \"Location_Code\": $('Get Company').first().json.properties.location_code || undefined,\n  \"ABN\": $('Get Company').first().json.properties.abn || undefined\n}) }}",
+        "jsonBody": "={{ ({\n  \"Name\": $('Get Company').first().json.properties.name,\n  \"Address\": $('Get Company').first().json.properties.address || undefined,\n  \"City\": $('Get Company').first().json.properties.city || undefined,\n  \"County\": $('Get Company').first().json.properties.state || undefined,\n  \"Post_Code\": $('Get Company').first().json.properties.zip || undefined,\n  \"Country_Region_Code\": (/^[A-Za-z]{2}$/.test($('Get Company').first().json.properties.country || \"\") ? $('Get Company').first().json.properties.country.toUpperCase() : $('Workflow Config').first().json.countryMap[String($('Get Company').first().json.properties.country || \"\").toLowerCase()]),\n  \"Phone_No\": $('Get Company').first().json.properties.phone || undefined,\n  \"E_Mail\": $('Get Company').first().json.properties.email || undefined,\n  \"Invoice_Email\": $('Get Company').first().json.properties.invoice_email || undefined,\n  \"Home_Page\": $('Get Company').first().json.properties.website || undefined,\n  \"Segment\": $('Get Company').first().json.properties.segment || undefined,\n  \"Sub_Segment\": $('Get Company').first().json.properties.sub_segement || undefined,\n  \"Responsibility_Center\": $('Get Company').first().json.properties.responsibility_center || undefined,\n  \"Location_Code\": $('Get Company').first().json.properties.location_code || undefined,\n  \"ABN\": $('Get Company').first().json.properties.abn || undefined\n}) }}",
         "options": {}
       },
       "name": "Update BC Customer",
@@ -749,7 +755,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  \"Gen_Bus_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"VAT_Bus_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"Customer_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"Name\": $('Get Company').first().json.properties.name,\n  \"Address\": $('Get Company').first().json.properties.address || undefined,\n  \"City\": $('Get Company').first().json.properties.city || undefined,\n  \"County\": $('Get Company').first().json.properties.state || undefined,\n  \"Post_Code\": $('Get Company').first().json.properties.zip || undefined,\n  \"Country_Region_Code\": (/^[A-Za-z]{2}$/.test($('Get Company').first().json.properties.country || \"\") ? $('Get Company').first().json.properties.country.toUpperCase() : $('Workflow Config').first().json.countryMap[String($('Get Company').first().json.properties.country || \"\").toLowerCase()]),\n  \"Phone_No\": $('Get Company').first().json.properties.phone || undefined,\n  \"E_Mail\": $('Get Company').first().json.properties.email || undefined,\n  \"Invoice_Email\": $('Get Company').first().json.properties.invoice_email || undefined,\n  \"Home_Page\": $('Get Company').first().json.properties.website || undefined,\n  \"Segment\": $('Get Company').first().json.properties.segment || undefined,\n  \"Responsibility_Center\": $('Get Company').first().json.properties.responsibility_center || undefined,\n  \"Location_Code\": $('Get Company').first().json.properties.location_code || undefined,\n  \"ABN\": $('Get Company').first().json.properties.abn || undefined\n}) }}",
+        "jsonBody": "={{ ({\n  \"Gen_Bus_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"VAT_Bus_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"Customer_Posting_Group\": $('Workflow Config').first().json.bcDefaultPostingGroup,\n  \"Name\": $('Get Company').first().json.properties.name,\n  \"Address\": $('Get Company').first().json.properties.address || undefined,\n  \"City\": $('Get Company').first().json.properties.city || undefined,\n  \"County\": $('Get Company').first().json.properties.state || undefined,\n  \"Post_Code\": $('Get Company').first().json.properties.zip || undefined,\n  \"Country_Region_Code\": (/^[A-Za-z]{2}$/.test($('Get Company').first().json.properties.country || \"\") ? $('Get Company').first().json.properties.country.toUpperCase() : $('Workflow Config').first().json.countryMap[String($('Get Company').first().json.properties.country || \"\").toLowerCase()]),\n  \"Phone_No\": $('Get Company').first().json.properties.phone || undefined,\n  \"E_Mail\": $('Get Company').first().json.properties.email || undefined,\n  \"Invoice_Email\": $('Get Company').first().json.properties.invoice_email || undefined,\n  \"Home_Page\": $('Get Company').first().json.properties.website || undefined,\n  \"Segment\": $('Get Company').first().json.properties.segment || undefined,\n  \"Sub_Segment\": $('Get Company').first().json.properties.sub_segement || undefined,\n  \"Responsibility_Center\": $('Get Company').first().json.properties.responsibility_center || undefined,\n  \"Location_Code\": $('Get Company').first().json.properties.location_code || undefined,\n  \"ABN\": $('Get Company').first().json.properties.abn || undefined\n}) }}",
         "options": {}
       },
       "name": "Create BC Customer",
@@ -1564,14 +1570,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  \"Primary_Contact_No\": $json.contactNumber\n}) }}",
+        "jsonBody": "={{ ({\n  \"Primary_Contact_No\": $('Contact Ready').first().json.contactNumber\n}) }}",
         "options": {}
       },
       "name": "Set Primary Contact On Customer",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        7152,
+        7600,
         1280
       ],
       "retryOnFail": true,
@@ -1615,7 +1621,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        7376,
+        7824,
         1280
       ],
       "retryOnFail": true,
@@ -1630,6 +1636,97 @@
         }
       },
       "notes": "Links the BC contact to the sales order (BC fills in the contact name from the number). Runs last so a failure here never blocks the order or the contact."
+    },
+    {
+      "name": "Contact Has Segment",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        7152,
+        1280
+      ],
+      "id": "ea8d283c-34a4-53de-9a17-e52274018852",
+      "notesInFlow": true,
+      "notes": "Skipped when the HubSpot contact has neither a segment nor a sub segment.",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "26f1939c-1f56-58d1-8ad1-5fa206434c78",
+              "leftValue": "={{ $('Get Contact').first().json.properties.segment }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "d12b4563-2056-5729-85e4-5c2e51b2a71d",
+              "leftValue": "={{ $('Get Contact').first().json.properties.sub_segment }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/{{ $('Workflow Config').first().json.bcContactPage }}('{{ $('Contact Ready').first().json.contactNumber }}')",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Match",
+              "value": "*"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"Segment\": $('Get Contact').first().json.properties.segment || undefined,\n  \"Sub_Segment\": $('Get Contact').first().json.properties.sub_segment || undefined\n}) }}",
+        "options": {}
+      },
+      "name": "Set BC Contact Segment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7376,
+        1104
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "id": "2331e705-ec21-5da2-b2c3-ecb8e2e61ad8",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "YPXK2LmAIUaC2Fbb",
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "notes": "Copies Segment and Sub Segment from the HubSpot contact to the BC contact card (the standard contacts API cannot carry them). Uses the Contact_Card web service named in Workflow Config (bcContactPage)."
     }
   ],
   "pinData": {},
@@ -2111,7 +2208,7 @@
       "main": [
         [
           {
-            "node": "Set Primary Contact On Customer",
+            "node": "Contact Has Segment",
             "type": "main",
             "index": 0
           }
@@ -2123,6 +2220,35 @@
         [
           {
             "node": "Set Sales Order Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Has Segment": {
+      "main": [
+        [
+          {
+            "node": "Set BC Contact Segment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Primary Contact On Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set BC Contact Segment": {
+      "main": [
+        [
+          {
+            "node": "Set Primary Contact On Customer",
             "type": "main",
             "index": 0
           }
