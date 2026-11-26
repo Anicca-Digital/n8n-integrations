@@ -2,7 +2,7 @@
 //  - already in HubSpot (matched on business_central_record_id) -> UPDATE, only properties that differ
 //  - not in HubSpot -> a "plan" item with the new contacts and the BC customers they belong to
 //    (companies are looked up next, so each new contact can be associated to its company)
-// BC wins; blanks are never sent. A generic contact with no first name / surname uses its display name.
+// BC wins; blanks are never sent. First name / surname are taken from the BC display name.
 const cfg = $('Workflow Config').first().json;
 const map = typeof cfg.fieldMap === 'string' ? JSON.parse(cfg.fieldMap) : cfg.fieldMap; // BC field -> HubSpot property
 const norm = (v) => (v === null || v === undefined ? '' : String(v).trim());
@@ -22,9 +22,11 @@ return $input.all().flatMap((item, i) => {
     if (!list[number]) continue;
     const bc = { ...list[number], ...(page[number] || {}) };
     const hs = found[number];
-    const noNameInBc = !norm(bc.firstName) && !norm(bc.surname);
-    const noNameInHubSpot = !hs || (!norm(hs.properties[map.firstName]) && !norm(hs.properties[map.surname]));
-    const view = noNameInBc && noNameInHubSpot ? { ...bc, firstName: bc.displayName } : bc;
+    // The BC contacts API has no first name / surname fields: split the display name at the first space.
+    // "Yeran Hettiarachchy" -> first "Yeran", last "Hettiarachchy"; a one-word name ("ACCOUNTS") is the first name.
+    const full = norm(bc.displayName);
+    const space = full.indexOf(' ');
+    const view = { ...bc, firstName: space < 0 ? full : full.slice(0, space), surname: space < 0 ? '' : full.slice(space + 1).trim() };
     const properties = {};
     for (const [bcField, hsProp] of Object.entries(map)) {
       const v = norm(view[bcField]);

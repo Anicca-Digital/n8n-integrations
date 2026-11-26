@@ -37,6 +37,12 @@ const rows = [];
 for (const page of $('Read BC Person Contacts').all()) {
   for (const person of page.json.value || []) {
     const p = { ...person, ...(pageFields[norm(person.number)] || {}) };
+    // The BC contacts API has no first name / surname fields: split the display name at the first space.
+    // "Yeran Hettiarachchy" -> first "Yeran", last "Hettiarachchy"; a one-word name ("ACCOUNTS") is the first name.
+    const full = norm(p.displayName);
+    const space = full.indexOf(' ');
+    p.firstName = space < 0 ? full : full.slice(0, space);
+    p.surname = space < 0 ? '' : full.slice(space + 1).trim();
     const customer = customerByCompanyContact[norm(p.companyNumber)];
     if (!customer) continue;                                     // not linked to an in-scope customer
     const properties = { [cfg.contactMatchProperty]: norm(p.number) };
@@ -44,8 +50,6 @@ for (const page of $('Read BC Person Contacts').all()) {
       const v = norm(p[bcField]);
       if (v) properties[hsProp] = v;
     }
-    // Generic contacts (e.g. "ACCOUNTS") have no first name / surname in BC: use the display name instead.
-    if (!properties[map.firstName] && !properties[map.surname] && norm(p.displayName)) properties[map.firstName] = norm(p.displayName);
     rows.push({ number: norm(p.number), companyId: companyId[customer], properties });
   }
 }
