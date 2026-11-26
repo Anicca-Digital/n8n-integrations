@@ -7,18 +7,18 @@
       "typeVersion": 1,
       "position": [
         -250,
-        -700
+        -760
       ],
       "parameters": {
-        "content": "## NWI - BC Customers -> HubSpot companies (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (companies read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so midnight means midnight Sydney.\n3. BC web service **Customer_Card** (page 21) must stay published (Segment, ABN, Invoice Email etc. are page-only).\n4. HubSpot company property `business_central_id` holds the BC customer number and is how a record is matched. Segment / Responsibility Center / Location Code are HubSpot dropdowns: a BC value HubSpot does not list fails that batch.\n5. **Workflow Config** holds the lookback window (25h = daily run + 1h overlap), batch size and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC customers created or changed in the last 25 hours, finds the matching HubSpot companys by `business_central_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. HubSpot records are never created. Safe to re-run.",
-        "width": 760,
-        "height": 460,
+        "content": "## NWI - BC Customers -> HubSpot companies (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so the schedule means Sydney time.\n3. BC web service **Customer_Card** (page 21) must be published.\n4. HubSpot company property `business_central_id` holds the BC number and is how a record is matched. Dropdown values must include every BC value or that batch of 100 fails.\n5. **Workflow Config** holds the lookback window (25h = daily run + 1h overlap), batch size and the BC-field -> HubSpot-property map.\n6. Runs at midnight. The contact sync runs an hour later, so new companies exist before their new contacts are created.\n\n**What it does:** finds BC customers created or changed in the last 25 hours. Missing in HubSpot (matched on `business_central_id`) -> CREATED (blocked or nameless customers are skipped). Already in HubSpot -> UPDATED, only properties whose value differs. BC wins. A blank in BC never clears HubSpot. Safe to re-run.",
+        "width": 900,
+        "height": 540,
         "color": 5
       },
       "id": "47eb0403-854b-5a57-ac82-b302359c8deb"
     },
     {
-      "name": "Every Day At Midnight",
+      "name": "Every Day",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -37,8 +37,8 @@
         }
       },
       "notesInFlow": true,
-      "notes": "Runs once a day at midnight (set the workflow timezone to Australia/Sydney). Production runs only - publish the workflow.",
-      "id": "965ee91a-c68c-5c15-b41a-6298e593f293"
+      "notes": "Runs once a day at 00:00 (set the workflow timezone to Australia/Sydney). Production runs only - publish the workflow.",
+      "id": "bbbc5edf-aad9-5f4e-bbeb-e5c0584d3e71"
     },
     {
       "name": "Workflow Config",
@@ -246,7 +246,7 @@
             },
             {
               "name": "$select",
-              "value": "No,Name,Address,City,County,Post_Code,Country_Region_Code,Phone_No,E_Mail,Invoice_Email,Home_Page,Segment,Sub_Segment,Responsibility_Center,Location_Code,ABN"
+              "value": "No,Blocked,Name,Address,City,County,Post_Code,Country_Region_Code,Phone_No,E_Mail,Invoice_Email,Home_Page,Segment,Sub_Segment,Responsibility_Center,Location_Code,ABN"
             }
           ]
         },
@@ -261,7 +261,7 @@
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "One call per batch: all the fields we sync, for up to batchSize customers.",
+      "notes": "One call per batch: all the fields we sync (and Blocked), for up to batchSize customers.",
       "id": "f0a82447-8d03-5832-ad78-a2472ab72a0f"
     },
     {
@@ -291,11 +291,11 @@
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "Read-only search (POST is only the HubSpot search convention): one call finds the HubSpot records for a whole batch.",
+      "notes": "Read-only search (POST is only the HubSpot search convention): one call finds the HubSpot records for a whole batch, with their current values.",
       "id": "5309470e-256b-5540-b6bc-be55c29e762b"
     },
     {
-      "name": "Compare And Build Updates",
+      "name": "Build Company Writes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -303,19 +303,113 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Joins BC customer details with the matching HubSpot companies (by business_central_id) and keeps\n// ONLY the properties whose value differs. BC wins; a blank BC value never overwrites HubSpot.\n// Output: one item per HubSpot batch-update call (up to 100 companies each). No changes = no items.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.fieldMap);            // BC Customer_Card field -> HubSpot company property\nconst countries = asObj(cfg.countryMap);    // 'australia' -> 'AU'\nconst title = (s) => s.replace(/\\b\\w/g, (c) => c.toUpperCase());\nconst countryName = Object.fromEntries(Object.entries(countries).map(([name, code]) => [code, title(name)]));\nconst toCode = (v) => {\n  const s = String(v || '').trim();\n  if (!s) return '';\n  return /^[A-Za-z]{2}$/.test(s) ? s.toUpperCase() : (countries[s.toLowerCase()] || s);\n};\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nconst customers = {};\nfor (const item of $('Read BC Customer Details').all()) {\n  for (const c of item.json.value || []) customers[String(c.No)] = c;\n}\n\nconst inputs = [];\nfor (const item of $input.all()) {\n  for (const company of item.json.results || []) {\n    const cust = customers[norm(company.properties[cfg.matchProperty])];\n    if (!cust) continue;\n    const properties = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const bcValue = norm(cust[bcField]);\n      if (!bcValue) continue;                                   // blank in BC: leave HubSpot alone\n      const current = company.properties[hsProp];\n      if (bcField === 'Country_Region_Code') {                  // HubSpot may hold \"Australia\", BC holds \"AU\"\n        if (toCode(current) !== bcValue.toUpperCase()) properties[hsProp] = countryName[bcValue.toUpperCase()] || bcValue;\n      } else if (bcValue !== norm(current)) {\n        properties[hsProp] = bcValue;\n      }\n    }\n    if (Object.keys(properties).length) inputs.push({ id: company.id, properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < inputs.length; i += 100) out.push({ json: { inputs: inputs.slice(i, i + 100) } });\nreturn out;"
+        "jsCode": "// Daily customer sync. For each batch of changed BC customers:\n//  - not in HubSpot yet (no company with that business_central_id) -> CREATE (skips blocked / nameless customers)\n//  - already in HubSpot -> UPDATE, but only the properties whose value differs\n// BC wins; a blank BC value is never sent, so it never clears HubSpot.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.fieldMap);            // BC Customer_Card field -> HubSpot company property\nconst countries = asObj(cfg.countryMap);    // 'australia' -> 'AU'\nconst title = (s) => s.replace(/\\b\\w/g, (c) => c.toUpperCase());\nconst countryName = Object.fromEntries(Object.entries(countries).map(([n, c]) => [c, title(n)]));\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\nconst toCode = (v) => { const s = norm(v); return /^[A-Za-z]{2}$/.test(s) ? s.toUpperCase() : (countries[s.toLowerCase()] || s); };\nconst details = $('Read BC Customer Details').all();\n\nreturn $input.all().flatMap((item, i) => {\n  const found = {};\n  for (const r of item.json.results || []) found[norm(r.properties[cfg.matchProperty])] = r;\n  const creates = [], updates = [];\n  for (const c of details[i].json.value || []) {\n    const number = norm(c.No);\n    const properties = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      let v = norm(c[bcField]);\n      if (!v) continue;                                          // blank in BC: not sent\n      if (bcField === 'Country_Region_Code') v = countryName[v.toUpperCase()] || v;\n      properties[hsProp] = v;\n    }\n    const hs = found[number];\n    if (!hs) {\n      if (norm(c.Blocked) || !norm(c.Name)) continue;            // never create blocked / nameless customers\n      creates.push({ properties: { [cfg.matchProperty]: number, ...properties } });\n      continue;\n    }\n    const changed = {};\n    for (const [prop, value] of Object.entries(properties)) {\n      const same = prop === 'country' ? toCode(value) === toCode(hs.properties[prop]) : value === norm(hs.properties[prop]);\n      if (!same) changed[prop] = value;\n    }\n    if (Object.keys(changed).length) updates.push({ id: hs.id, properties: changed });\n  }\n  const out = [];\n  if (creates.length) out.push({ json: { op: 'create', inputs: creates } });\n  if (updates.length) out.push({ json: { op: 'update', inputs: updates } });\n  return out;\n});"
       },
       "notesInFlow": true,
-      "notes": "Keeps only properties that differ. Blank BC values are ignored. No changes = no output, so the next node does not run.",
-      "id": "ad02636e-645d-5dc9-9438-4c9290d4055e"
+      "notes": "Not in HubSpot -> create payload (blocked / nameless customers skipped). In HubSpot -> update payload with only the properties that differ.",
+      "id": "b7d19a2f-3229-586a-bde5-84ee05bbc15e"
     },
     {
-      "name": "Update HubSpot Companies",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "Company Write Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
       "position": [
         1568,
         0
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b3c36368-0c91-502b-a83c-39b0ba62c08e",
+                    "leftValue": "={{ $json.op }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e409c20c-a25f-5099-a848-73f46eefe810",
+                    "leftValue": "={{ $json.op }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "update"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "Routes each item: create (new companies) or update (existing ones that changed).",
+      "id": "852243e4-81a2-58a4-94f4-d5c1886064ad"
+    },
+    {
+      "name": "Create Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        -170
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/batch/create",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"inputs\": $json.inputs\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Batch create, up to 100 companies per call. Create call: no retry, by design.",
+      "id": "b05c2f99-abd1-59b1-9721-dd69478fd7f3"
+    },
+    {
+      "name": "Update Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        170
       ],
       "parameters": {
         "url": "=https://api.hubapi.com/crm/v3/objects/companies/batch/update",
@@ -336,21 +430,21 @@
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "Batch update, up to 100 companies per call. Updates only: records are never created. Setting the same value twice is harmless, so retry is safe.",
-      "id": "e23880b1-f47f-505b-bc4c-9408b6e5f63f"
+      "notes": "Batch update, up to 100 companies per call. Only differing properties are sent. Setting the same value twice is harmless.",
+      "id": "da4bfa0f-b392-55ab-be7b-09842c72babb"
     },
     {
       "name": "Section 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -250,
+        184,
         -140
       ],
       "parameters": {
         "content": "## 1. Find changed BC customers\nOne call lists everything created or modified in the lookback window.",
-        "width": 1010,
-        "height": 400,
+        "width": 956,
+        "height": 420,
         "color": 7
       },
       "id": "3f132e7d-0176-5c78-a9a8-35d85570bc03"
@@ -364,9 +458,9 @@
         -140
       ],
       "parameters": {
-        "content": "## 2. Find the HubSpot records\nBC details in one call per batch, matching companies in one search.",
-        "width": 862,
-        "height": 400,
+        "content": "## 2. Read details + find HubSpot records\nBatches of 50: BC details in one call, matching HubSpot records in one search.",
+        "width": 732,
+        "height": 420,
         "color": 4
       },
       "id": "7e128234-7a78-55b2-8e72-d7a42416e682"
@@ -377,19 +471,19 @@
       "typeVersion": 1,
       "position": [
         1304,
-        -140
+        -330
       ],
       "parameters": {
-        "content": "## 3. Write only what changed\nCompares BC to HubSpot and updates up to 100 records per call.",
-        "width": 528,
-        "height": 400,
+        "content": "## 3. Create new + update changed\nNew customers are created, changed ones updated, 100 per call.",
+        "width": 732,
+        "height": 700,
         "color": 6
       },
       "id": "0f14adb1-caf5-59d6-b8f9-bd6dacff5a24"
     }
   ],
   "connections": {
-    "Every Day At Midnight": {
+    "Every Day": {
       "main": [
         [
           {
@@ -466,18 +560,36 @@
       "main": [
         [
           {
-            "node": "Compare And Build Updates",
+            "node": "Build Company Writes",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Compare And Build Updates": {
+    "Build Company Writes": {
       "main": [
         [
           {
-            "node": "Update HubSpot Companies",
+            "node": "Company Write Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Write Type": {
+      "main": [
+        [
+          {
+            "node": "Create Companies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Companies",
             "type": "main",
             "index": 0
           }
