@@ -10,7 +10,7 @@
         -760
       ],
       "parameters": {
-        "content": "## NWI - BC Sales Orders -> HubSpot Deals (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (deals read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning remains on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file).\n3. Settings -> Timezone is Australia/Sydney, so *Every Day At Midnight* means midnight Sydney. Check it.\n4. BC web service **SalesOrder** (page 42) must stay published. Standard API `salesOrders` is used to find changed orders.\n5. HubSpot dropdown `product_category` must hold the same text as BC. A BC value HubSpot does not accept fails that batch (the error handler alerts; the run is safe to repeat).\n6. **Workflow Config** holds: lookback window (25h, one hour of overlap), batch size, and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC sales orders created or changed in the last 25 hours, reads them in batches, finds the matching deals by `bc_order_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. Deals are never created.\n**Safe to re-run:** it only writes values that differ.\n**API calls for N changed orders:** 1 BC list + N/50 BC reads + N/50 HubSpot searches + changed deals/100 HubSpot updates.",
+        "content": "## NWI - BC Sales Orders -> HubSpot Deals (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (deals read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning remains on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file).\n3. Settings -> Timezone is Australia/Sydney, so *Every Day At Midnight* means midnight Sydney. Check it.\n4. BC web service **SalesOrder** (page 42) must stay published. Standard API `salesOrders` is used to find changed orders.\n5. HubSpot dropdown `product_category` must hold the same text as BC. A BC value HubSpot does not accept fails that batch (the error handler alerts; the run is safe to repeat).\n6. **Workflow Config** holds: lookback window (24h before the run), batch size, and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC sales orders created or changed in the 24 hours before the run, reads them in batches, finds the matching deals by `bc_order_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. Deals are never created.\n**Safe to re-run:** it only writes values that differ.\n**API calls for N changed orders:** 1 BC list + N/50 BC reads + N/50 HubSpot searches + changed deals/100 HubSpot updates.",
         "width": 760,
         "height": 520,
         "color": 5
@@ -120,7 +120,7 @@
             {
               "id": "06d24516-85b3-588a-9a2a-bb06ea673a8a",
               "name": "lookbackHours",
-              "value": "25",
+              "value": "24",
               "type": "number"
             },
             {
@@ -140,7 +140,7 @@
         "options": {}
       },
       "notesInFlow": true,
-      "notes": "lookbackHours: how far back to look for changed orders (25 = daily run + 1h overlap). batchSize: orders per BC read / HubSpot search. fieldMap: BC sales order page field -> HubSpot deal property.",
+      "notes": "lookbackHours: how far back to look for changed orders (24 = the last 24 hours before the run). batchSize: orders per BC read / HubSpot search. fieldMap: BC sales order page field -> HubSpot deal property.",
       "id": "41eac3a4-b616-513c-bac4-c542a3ad3296"
     },
     {

@@ -10,7 +10,7 @@
         -760
       ],
       "parameters": {
-        "content": "## NWI - BC Contacts -> HubSpot contacts (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so the schedule means Sydney time.\n3. BC web service **Contact_Card** (page 5050, name set in Workflow Config as bcContactPage) must be published: Segment, Sub Segment and IntegrationCustomerNo (the customer a contact belongs to) are read from it.\n4. HubSpot contact property `business_central_record_id` holds the BC number and is how a record is matched. Dropdown values must include every BC value or that batch of 100 fails.\n5. **Workflow Config** holds the lookback window (25h = daily run + 1h overlap), batch size and the BC-field -> HubSpot-property map.\n6. Runs at 01:00, after the company sync, so a customer created today already has its company when its new contacts are created.\n\n**What it does:** finds BC contacts created or changed in the last 25 hours. Missing in HubSpot (matched on `business_central_record_id`) -> CREATED and associated to the company of their BC customer (skipped when that customer has no HubSpot company, e.g. blocked). Already in HubSpot -> UPDATED, only properties whose value differs. BC wins. A blank in BC never clears HubSpot. Safe to re-run.",
+        "content": "## NWI - BC Contacts -> HubSpot contacts (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so the schedule means Sydney time.\n3. BC web service **Contact_Card** (page 5050, name set in Workflow Config as bcContactPage) must be published: Segment, Sub Segment and IntegrationCustomerNo (the customer a contact belongs to) are read from it.\n4. HubSpot contact property `business_central_record_id` holds the BC number and is how a record is matched. Dropdown values must include every BC value or that batch of 100 fails.\n5. **Workflow Config** holds the lookback window (24h = from the moment the workflow runs back to 24 hours earlier), batch size and the BC-field -> HubSpot-property map.\n6. Runs at 01:00, after the company sync, so a customer created today already has its company when its new contacts are created.\n\n**What it does:** finds BC contacts created or changed in the 24 hours before the run. Missing in HubSpot (matched on `business_central_record_id`) -> CREATED and associated to the company of their BC customer (skipped when that customer has no HubSpot company, e.g. blocked). Already in HubSpot -> UPDATED, only properties whose value differs. BC wins. A blank in BC never clears HubSpot. Safe to re-run.",
         "width": 900,
         "height": 540,
         "color": 5
@@ -72,7 +72,7 @@
             {
               "id": "6f4e9caa-bdea-52cd-82db-e04a6d2a539b",
               "name": "lookbackHours",
-              "value": "25",
+              "value": "24",
               "type": "number"
             },
             {
@@ -110,7 +110,7 @@
         "options": {}
       },
       "notesInFlow": true,
-      "notes": "lookbackHours: how far back to look (25 = daily run + 1h overlap). matchProperty: HubSpot property holding the BC number. fieldMap: BC field -> HubSpot property.",
+      "notes": "lookbackHours: how far back from the run time to look (24 = the last 24 hours). matchProperty: HubSpot property holding the BC number. fieldMap: BC field -> HubSpot property.",
       "id": "d83c56c9-bf6f-52b1-8ab5-f8e88fd4932b"
     },
     {
