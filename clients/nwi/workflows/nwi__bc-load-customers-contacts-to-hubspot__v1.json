@@ -10,7 +10,7 @@
         -760
       ],
       "parameters": {
-        "content": "## NWI - One-off load: BC customers + contacts -> HubSpot companies + contacts\n**Run this once, by hand (Execute workflow). Test first:** set `maxCustomers` in *Workflow Config* to 50, run, check the records in HubSpot, then set it to 0 (= all) and run again. Re-runs are safe: anything already in HubSpot (matched on the BC number) is skipped.\n1. Credentials: **HubSpot Service Key account** (companies + contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. BC web service **Customer_Card** (page 21) must be published. Confirm the BC field `Sub_Segment` exists there (the first test run fails with a clear error if the name differs).\n3. HubSpot company properties needed: `business_central_id`, `segment`, `sub_segement` (as spelled in HubSpot), `abn`, `invoice_email`, `responsibility_center`, `location_code`. Contact: `business_central_record_id`. Dropdown values (segment, sub segment, responsibility center, location code) must include every BC value or that batch of 100 fails.\n4. BC reads are paged. In each *Read BC ...* node, Options -> Pagination should show \"Response Contains Next URL\".\n5. Blocked customers are skipped. Only Person contacts linked to an in-scope customer are loaded. No owner is set.\n6. Contacts are associated to their company (company becomes the contact's primary company).\n7. After the load, delete or leave this workflow inactive. Daily syncs keep BC and HubSpot aligned afterwards.",
+        "content": "## NWI - One-off load: BC customers + contacts -> HubSpot companies + contacts\n**Run this once, by hand (Execute workflow). Test first:** set `maxCustomers` in *Workflow Config* to 50, run, check the records in HubSpot, then set it to 0 (= all) and run again. Re-runs are safe: anything already in HubSpot (matched on the BC number) is skipped.\n1. Credentials: **HubSpot Service Key account** (companies + contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. BC web service **Customer_Card** (page 21) must be published. Also publish the BC contact card page (5050) as a web service named `Contact_Card` (or change bcContactPage in Workflow Config): contact Segment and Sub_Segment are read from it. Confirm the BC field `Sub_Segment` exists on Customer_Card and Contact_Card (the first test run fails with a clear error if the name differs).\n3. HubSpot company properties needed: `business_central_id`, `segment`, `sub_segement` (as spelled in HubSpot), `abn`, `invoice_email`, `responsibility_center`, `location_code`. Contact: `business_central_record_id`. Dropdown values (segment, sub segment, responsibility center, location code) must include every BC value or that batch of 100 fails.\n4. BC reads are paged. In each *Read BC ...* node, Options -> Pagination should show \"Response Contains Next URL\".\n5. Blocked customers are skipped. Only Person contacts linked to an in-scope customer are loaded. No owner is set.\n6. Contacts are associated to their company (company becomes the contact's primary company).\n7. After the load, delete or leave this workflow inactive. Daily syncs keep BC and HubSpot aligned afterwards.",
         "width": 900,
         "height": 500,
         "color": 5
@@ -26,8 +26,8 @@
         -150
       ],
       "parameters": {
-        "content": "## 1. Read from Business Central\nAll customers, their company contacts and all Person contacts (paged, a few big calls).",
-        "width": 1180,
+        "content": "## 1. Read from Business Central\nAll customers, their company contacts, all Person contacts and contact segments (paged, a few big calls).",
+        "width": 1404,
         "height": 440,
         "color": 7
       },
@@ -38,7 +38,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1080,
+        1304,
         -150
       ],
       "parameters": {
@@ -54,7 +54,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        2424,
+        2648,
         -150
       ],
       "parameters": {
@@ -112,6 +112,12 @@
               "type": "number"
             },
             {
+              "id": "a61cad86-abc6-538f-bf2a-164e6648481e",
+              "name": "bcContactPage",
+              "value": "Contact_Card",
+              "type": "string"
+            },
+            {
               "id": "3408f2cf-6565-5b65-816d-d0b3525571a4",
               "name": "companyMatchProperty",
               "value": "business_central_id",
@@ -132,7 +138,7 @@
             {
               "id": "bd48d489-25f2-5379-81ed-1948ac4bad44",
               "name": "contactFieldMap",
-              "value": "{\n  \"firstName\": \"firstname\",\n  \"surname\": \"lastname\",\n  \"email\": \"email\",\n  \"phoneNumber\": \"phone\",\n  \"mobilePhoneNumber\": \"mobilephone\"\n}",
+              "value": "{\n  \"firstName\": \"firstname\",\n  \"surname\": \"lastname\",\n  \"email\": \"email\",\n  \"phoneNumber\": \"phone\",\n  \"mobilePhoneNumber\": \"mobilephone\",\n  \"Segment\": \"segment\",\n  \"Sub_Segment\": \"sub_segment\"\n}",
               "type": "object"
             },
             {
@@ -322,11 +328,66 @@
       "id": "8419c89c-ffe2-5a73-97c9-dc0cd8afbbf3"
     },
     {
+      "name": "Read BC Contact Segments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/{{ $('Workflow Config').first().json.bcContactPage }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$select",
+              "value": "No,Segment,Sub_Segment"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body['@odata.nextLink'] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body['@odata.nextLink'] }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "notesInFlow": true,
+      "notes": "Segment and Sub Segment for every contact, from the BC contact card web service (name set in Workflow Config: bcContactPage). Runs once.",
+      "id": "750b4552-2a34-588e-a727-19b36a6a7c3f"
+    },
+    {
       "name": "Prepare Customer Batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        896,
+        1120,
         0
       ],
       "parameters": {
@@ -341,7 +402,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
+        1344,
         0
       ],
       "parameters": {
@@ -371,7 +432,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
+        1568,
         0
       ],
       "parameters": {
@@ -386,7 +447,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1568,
+        1792,
         0
       ],
       "parameters": {
@@ -423,7 +484,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1792,
+        2016,
         -170
       ],
       "parameters": {
@@ -450,7 +511,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        2016,
+        2240,
         0
       ],
       "parameters": {},
@@ -463,11 +524,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2240,
+        2464,
         0
       ],
       "parameters": {
-        "jsCode": "// 1) Builds the full BC customer number -> HubSpot company id map (existing + just created).\n// 2) Joins every BC Person contact to its customer (via the customer's company contact) and\n//    returns contact batches of 100. Contacts of blocked / out-of-scope customers are skipped.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.contactFieldMap);       // BC contact field -> HubSpot contact property\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nconst companyId = {};                          // BC customer number -> HubSpot company id\nfor (const item of $('Build Company Creates').all()) Object.assign(companyId, item.json.existing);   // already in HubSpot\nfor (const item of $input.all()) {                                                                    // just created\n  if (item.json.errors && item.json.errors.length) {\n    throw new Error(`HubSpot rejected some company creates: ${JSON.stringify(item.json.errors).slice(0, 500)}`);\n  }\n  for (const r of item.json.results || []) companyId[norm(r.properties[cfg.companyMatchProperty])] = r.id;\n}\nconst scope = $('Prepare Customer Batches').all().flatMap((b) => b.json.numbers);\nconst missing = scope.filter((n) => !companyId[n]);\nif (missing.length) throw new Error(`${missing.length} customers have no HubSpot company after the create step, e.g. ${missing.slice(0, 5).join(', ')}`);\n\n// customer number -> its BC company contact number\nconst customerByCompanyContact = {};\nfor (const page of $('Read BC Company Contacts').all()) {\n  for (const c of page.json.value || []) {\n    const company = (c.contactsInformation || []).find((x) => x.contactType === 'Company');\n    if (company && companyId[norm(c.number)]) customerByCompanyContact[norm(company.contactNumber)] = norm(c.number);\n  }\n}\n\nconst rows = [];\nfor (const page of $('Read BC Person Contacts').all()) {\n  for (const p of page.json.value || []) {\n    const customer = customerByCompanyContact[norm(p.companyNumber)];\n    if (!customer) continue;                                     // not linked to an in-scope customer\n    const properties = { [cfg.contactMatchProperty]: norm(p.number) };\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const v = norm(p[bcField]);\n      if (v) properties[hsProp] = v;\n    }\n    rows.push({ number: norm(p.number), companyId: companyId[customer], properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < rows.length; i += 100) {\n  const contacts = rows.slice(i, i + 100);\n  out.push({ json: { numbers: contacts.map((r) => r.number), contacts } });\n}\nreturn out;"
+        "jsCode": "// 1) Builds the full BC customer number -> HubSpot company id map (existing + just created).\n// 2) Joins every BC Person contact to its customer (via the customer's company contact) and\n//    returns contact batches of 100. Contacts of blocked / out-of-scope customers are skipped.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.contactFieldMap);       // BC contact field -> HubSpot contact property\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nconst companyId = {};                          // BC customer number -> HubSpot company id\nfor (const item of $('Build Company Creates').all()) Object.assign(companyId, item.json.existing);   // already in HubSpot\nfor (const item of $input.all()) {                                                                    // just created\n  if (item.json.errors && item.json.errors.length) {\n    throw new Error(`HubSpot rejected some company creates: ${JSON.stringify(item.json.errors).slice(0, 500)}`);\n  }\n  for (const r of item.json.results || []) companyId[norm(r.properties[cfg.companyMatchProperty])] = r.id;\n}\nconst scope = $('Prepare Customer Batches').all().flatMap((b) => b.json.numbers);\nconst missing = scope.filter((n) => !companyId[n]);\nif (missing.length) throw new Error(`${missing.length} customers have no HubSpot company after the create step, e.g. ${missing.slice(0, 5).join(', ')}`);\n\n// customer number -> its BC company contact number\nconst customerByCompanyContact = {};\nfor (const page of $('Read BC Company Contacts').all()) {\n  for (const c of page.json.value || []) {\n    const company = (c.contactsInformation || []).find((x) => x.contactType === 'Company');\n    if (company && companyId[norm(c.number)]) customerByCompanyContact[norm(company.contactNumber)] = norm(c.number);\n  }\n}\n\n// Segment / Sub_Segment live on the BC contact card page, keyed by contact number.\nconst pageFields = {};\nfor (const page of $('Read BC Contact Segments').all()) {\n  for (const c of page.json.value || []) pageFields[norm(c.No)] = c;\n}\n\nconst rows = [];\nfor (const page of $('Read BC Person Contacts').all()) {\n  for (const person of page.json.value || []) {\n    const p = { ...person, ...(pageFields[norm(person.number)] || {}) };\n    const customer = customerByCompanyContact[norm(p.companyNumber)];\n    if (!customer) continue;                                     // not linked to an in-scope customer\n    const properties = { [cfg.contactMatchProperty]: norm(p.number) };\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const v = norm(p[bcField]);\n      if (v) properties[hsProp] = v;\n    }\n    rows.push({ number: norm(p.number), companyId: companyId[customer], properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < rows.length; i += 100) {\n  const contacts = rows.slice(i, i + 100);\n  out.push({ json: { numbers: contacts.map((r) => r.number), contacts } });\n}\nreturn out;"
       },
       "notesInFlow": true,
       "notes": "Customer number -> HubSpot company id (existing + created), then every Person contact joined to its customer. Batches of 100.",
@@ -478,7 +539,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2464,
+        2688,
         0
       ],
       "parameters": {
@@ -508,7 +569,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2688,
+        2912,
         0
       ],
       "parameters": {
@@ -523,7 +584,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2912,
+        3136,
         0
       ],
       "parameters": {
@@ -560,7 +621,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3136,
+        3360,
         -170
       ],
       "parameters": {
@@ -587,7 +648,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        3360,
+        3584,
         0
       ],
       "parameters": {},
@@ -600,7 +661,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3584,
+        3808,
         0
       ],
       "parameters": {
@@ -615,7 +676,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3808,
+        4032,
         0
       ],
       "parameters": {
@@ -687,6 +748,17 @@
       ]
     },
     "Read BC Person Contacts": {
+      "main": [
+        [
+          {
+            "node": "Read BC Contact Segments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Contact Segments": {
       "main": [
         [
           {

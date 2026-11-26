@@ -5,8 +5,13 @@ const cfg = $('Workflow Config').first().json;
 const map = typeof cfg.fieldMap === 'string' ? JSON.parse(cfg.fieldMap) : cfg.fieldMap; // BC field -> HubSpot property
 const norm = (v) => (v === null || v === undefined ? '' : String(v).trim());
 
+// Standard fields come from the changed-contacts list; Segment / Sub_Segment come from the BC contact card page.
+const pageFields = {};
+for (const item of $('Read BC Contact Details').all()) {
+  for (const c of item.json.value || []) pageFields[String(c.No)] = c;
+}
 const contacts = {};
-for (const c of $('List Changed BC Contacts').first().json.value || []) contacts[String(c.number)] = c;
+for (const c of $('List Changed BC Contacts').first().json.value || []) contacts[String(c.number)] = { ...c, ...(pageFields[String(c.number)] || {}) };
 
 const inputs = [];
 for (const item of $input.all()) {

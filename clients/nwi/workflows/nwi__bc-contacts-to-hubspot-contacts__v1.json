@@ -10,7 +10,7 @@
         -700
       ],
       "parameters": {
-        "content": "## NWI - BC Contacts -> HubSpot contacts (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so midnight means midnight Sydney.\n3. Uses the standard BC API only (contacts), no web service needed.\n4. HubSpot contact property `business_central_record_id` holds the BC contact number and is how a record is matched. Nothing here is a dropdown.\n5. **Workflow Config** holds the lookback window (25h = daily run + 1h overlap), batch size and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC contacts created or changed in the last 25 hours, finds the matching HubSpot contacts by `business_central_record_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. HubSpot records are never created. Safe to re-run.",
+        "content": "## NWI - BC Contacts -> HubSpot contacts (daily): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** (contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney, so midnight means midnight Sydney.\n3. BC web service **Contact_Card** (page 5050, name set in Workflow Config as bcContactPage) must be published: Segment and Sub Segment are read from it. Confirm the field names `Segment` and `Sub_Segment` exist there.\n4. HubSpot contact property `business_central_record_id` holds the BC contact number and is how a record is matched. Segment / Sub Segment (`sub_segment`) are HubSpot dropdowns: a BC value HubSpot does not list fails that batch.\n5. **Workflow Config** holds the lookback window (25h = daily run + 1h overlap), batch size and the BC-field -> HubSpot-property map.\n\n**What it does:** finds BC contacts created or changed in the last 25 hours, finds the matching HubSpot contacts by `business_central_record_id`, and updates only the properties whose value differs. BC wins. A blank in BC never clears HubSpot. HubSpot records are never created. Safe to re-run.",
         "width": 760,
         "height": 460,
         "color": 5
@@ -90,8 +90,14 @@
             {
               "id": "d5bbeb32-66d4-5bf4-84e9-bfe9509e4842",
               "name": "fieldMap",
-              "value": "{\n  \"firstName\": \"firstname\",\n  \"surname\": \"lastname\",\n  \"email\": \"email\",\n  \"phoneNumber\": \"phone\",\n  \"mobilePhoneNumber\": \"mobilephone\"\n}",
+              "value": "{\n  \"firstName\": \"firstname\",\n  \"surname\": \"lastname\",\n  \"email\": \"email\",\n  \"phoneNumber\": \"phone\",\n  \"mobilePhoneNumber\": \"mobilephone\",\n  \"Segment\": \"segment\",\n  \"Sub_Segment\": \"sub_segment\"\n}",
               "type": "object"
+            },
+            {
+              "id": "4820b9b0-fc26-5971-9d58-610fe2fe3bd4",
+              "name": "bcContactPage",
+              "value": "Contact_Card",
+              "type": "string"
             }
           ]
         },
@@ -146,7 +152,7 @@
       "maxTries": 3,
       "waitBetweenTries": 3000,
       "notesInFlow": true,
-      "notes": "One call: every contact created or modified in the window. Returns all the fields we sync, so no second BC call is needed.",
+      "notes": "One call: every contact created or modified in the window. Segment and Sub Segment are read in the next step (they are not in the standard API).",
       "id": "30163fa3-91da-5b5c-aaab-6041aaf25413"
     },
     {
@@ -196,7 +202,7 @@
       "id": "33383c2e-7c95-5aae-951d-e56a3c52e0d0"
     },
     {
-      "name": "Build Search Batches",
+      "name": "Build BC Read Batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -204,18 +210,66 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Splits the changed BC contact numbers into batches of up to 100 (the HubSpot search IN limit),\n// so one search call finds the HubSpot contacts for a whole batch.\nconst numbers = ($input.first().json.value || []).map((c) => c.number);\nconst batches = [];\nfor (let i = 0; i < numbers.length; i += 100) batches.push({ json: { numbers: numbers.slice(i, i + 100) } });\nreturn batches;"
+        "jsCode": "// Splits the changed BC contact numbers into batches so each BC page read and each HubSpot search\n// covers many contacts in one call. Batch size comes from Workflow Config (batchSize).\nconst size = Number($('Workflow Config').first().json.batchSize) || 50;\nconst numbers = ($input.first().json.value || []).map((c) => c.number);\nconst batches = [];\nfor (let i = 0; i < numbers.length; i += size) {\n  const chunk = numbers.slice(i, i + size);\n  batches.push({ json: { numbers: chunk, filter: chunk.map((n) => `No eq '${n}'`).join(' or ') } });\n}\nreturn batches;"
       },
       "notesInFlow": true,
-      "notes": "Splits the contact numbers into batches of 100 (the HubSpot search limit). One item per batch.",
-      "id": "8547ddf5-3803-5862-b93f-ae3b32ef9b34"
+      "notes": "Splits the contact numbers into batches (batchSize each). One item per batch.",
+      "id": "b8516e6f-65df-5072-b49d-074400508f4a"
+    },
+    {
+      "name": "Read BC Contact Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/{{ $('Workflow Config').first().json.bcContactPage }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ $json.filter }}"
+            },
+            {
+              "name": "$select",
+              "value": "No,Segment,Sub_Segment"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "One call per batch: Segment and Sub Segment from the BC contact card web service (name set in Workflow Config: bcContactPage).",
+      "id": "abdf49a6-700a-5959-8a34-283633d3e7e3"
     },
     {
       "name": "Find Matching Contacts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        896,
+        1120,
         0
       ],
       "parameters": {
@@ -225,7 +279,7 @@
         "nodeCredentialType": "hubspotAppToken",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [{ \"propertyName\": $('Workflow Config').first().json.matchProperty, \"operator\": \"IN\", \"values\": $json.numbers }] }],\n  \"properties\": [$('Workflow Config').first().json.matchProperty, ...Object.keys($('Workflow Config').first().json.fieldMap).map((k) => $('Workflow Config').first().json.fieldMap[k])],\n  \"limit\": 100\n}) }}",
+        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [{ \"propertyName\": $('Workflow Config').first().json.matchProperty, \"operator\": \"IN\", \"values\": $('Build BC Read Batches').item.json.numbers }] }],\n  \"properties\": [$('Workflow Config').first().json.matchProperty, ...Object.keys($('Workflow Config').first().json.fieldMap).map((k) => $('Workflow Config').first().json.fieldMap[k])],\n  \"limit\": 100\n}) }}",
         "options": {}
       },
       "credentials": {
@@ -245,11 +299,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
+        1344,
         0
       ],
       "parameters": {
-        "jsCode": "// Joins the changed BC contacts with the matching HubSpot contacts (by business_central_record_id)\n// and keeps ONLY the properties whose value differs. BC wins; a blank BC value never overwrites HubSpot.\n// Output: one item per HubSpot batch-update call (up to 100 contacts each). No changes = no items.\nconst cfg = $('Workflow Config').first().json;\nconst map = typeof cfg.fieldMap === 'string' ? JSON.parse(cfg.fieldMap) : cfg.fieldMap; // BC field -> HubSpot property\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nconst contacts = {};\nfor (const c of $('List Changed BC Contacts').first().json.value || []) contacts[String(c.number)] = c;\n\nconst inputs = [];\nfor (const item of $input.all()) {\n  for (const contact of item.json.results || []) {\n    const bc = contacts[norm(contact.properties[cfg.matchProperty])];\n    if (!bc) continue;\n    const properties = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const bcValue = norm(bc[bcField]);\n      if (!bcValue) continue;                                   // blank in BC: leave HubSpot alone\n      const same = bcField === 'email'\n        ? bcValue.toLowerCase() === norm(contact.properties[hsProp]).toLowerCase()\n        : bcValue === norm(contact.properties[hsProp]);\n      if (!same) properties[hsProp] = bcValue;\n    }\n    if (Object.keys(properties).length) inputs.push({ id: contact.id, properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < inputs.length; i += 100) out.push({ json: { inputs: inputs.slice(i, i + 100) } });\nreturn out;"
+        "jsCode": "// Joins the changed BC contacts with the matching HubSpot contacts (by business_central_record_id)\n// and keeps ONLY the properties whose value differs. BC wins; a blank BC value never overwrites HubSpot.\n// Output: one item per HubSpot batch-update call (up to 100 contacts each). No changes = no items.\nconst cfg = $('Workflow Config').first().json;\nconst map = typeof cfg.fieldMap === 'string' ? JSON.parse(cfg.fieldMap) : cfg.fieldMap; // BC field -> HubSpot property\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\n// Standard fields come from the changed-contacts list; Segment / Sub_Segment come from the BC contact card page.\nconst pageFields = {};\nfor (const item of $('Read BC Contact Details').all()) {\n  for (const c of item.json.value || []) pageFields[String(c.No)] = c;\n}\nconst contacts = {};\nfor (const c of $('List Changed BC Contacts').first().json.value || []) contacts[String(c.number)] = { ...c, ...(pageFields[String(c.number)] || {}) };\n\nconst inputs = [];\nfor (const item of $input.all()) {\n  for (const contact of item.json.results || []) {\n    const bc = contacts[norm(contact.properties[cfg.matchProperty])];\n    if (!bc) continue;\n    const properties = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const bcValue = norm(bc[bcField]);\n      if (!bcValue) continue;                                   // blank in BC: leave HubSpot alone\n      const same = bcField === 'email'\n        ? bcValue.toLowerCase() === norm(contact.properties[hsProp]).toLowerCase()\n        : bcValue === norm(contact.properties[hsProp]);\n      if (!same) properties[hsProp] = bcValue;\n    }\n    if (Object.keys(properties).length) inputs.push({ id: contact.id, properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < inputs.length; i += 100) out.push({ json: { inputs: inputs.slice(i, i + 100) } });\nreturn out;"
       },
       "notesInFlow": true,
       "notes": "Keeps only properties that differ. Blank BC values are ignored. No changes = no output, so the next node does not run.",
@@ -260,7 +314,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1344,
+        1568,
         0
       ],
       "parameters": {
@@ -295,7 +349,7 @@
       ],
       "parameters": {
         "content": "## 1. Find changed BC contacts\nOne call lists everything created or modified in the lookback window.",
-        "width": 790,
+        "width": 1010,
         "height": 400,
         "color": 7
       },
@@ -311,7 +365,7 @@
       ],
       "parameters": {
         "content": "## 2. Find the HubSpot records\nOne search per batch of 100 contacts.",
-        "width": 638,
+        "width": 862,
         "height": 400,
         "color": 4
       },
@@ -322,7 +376,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1080,
+        1304,
         -140
       ],
       "parameters": {
@@ -372,7 +426,7 @@
       "main": [
         [
           {
-            "node": "Build Search Batches",
+            "node": "Build BC Read Batches",
             "type": "main",
             "index": 0
           }
@@ -386,7 +440,18 @@
         ]
       ]
     },
-    "Build Search Batches": {
+    "Build BC Read Batches": {
+      "main": [
+        [
+          {
+            "node": "Read BC Contact Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Contact Details": {
       "main": [
         [
           {

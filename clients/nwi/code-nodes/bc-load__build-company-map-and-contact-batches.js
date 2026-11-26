@@ -27,9 +27,16 @@ for (const page of $('Read BC Company Contacts').all()) {
   }
 }
 
+// Segment / Sub_Segment live on the BC contact card page, keyed by contact number.
+const pageFields = {};
+for (const page of $('Read BC Contact Segments').all()) {
+  for (const c of page.json.value || []) pageFields[norm(c.No)] = c;
+}
+
 const rows = [];
 for (const page of $('Read BC Person Contacts').all()) {
-  for (const p of page.json.value || []) {
+  for (const person of page.json.value || []) {
+    const p = { ...person, ...(pageFields[norm(person.number)] || {}) };
     const customer = customerByCompanyContact[norm(p.companyNumber)];
     if (!customer) continue;                                     // not linked to an in-scope customer
     const properties = { [cfg.contactMatchProperty]: norm(p.number) };
