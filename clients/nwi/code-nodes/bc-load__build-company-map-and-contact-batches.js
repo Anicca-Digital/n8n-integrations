@@ -7,12 +7,12 @@ const map = asObj(cfg.contactFieldMap);       // BC contact field -> HubSpot con
 const norm = (v) => (v === null || v === undefined ? '' : String(v).trim());
 
 const companyId = {};                          // BC customer number -> HubSpot company id
-for (const item of $('Build Company Creates').all()) Object.assign(companyId, item.json.existing);   // already in HubSpot
+for (const item of $('Build Company Writes').all()) Object.assign(companyId, item.json.existing || {});   // already in HubSpot
 for (const item of $input.all()) {                                                                    // just created
   if (item.json.errors && item.json.errors.length) {
     throw new Error(`HubSpot rejected some company creates: ${JSON.stringify(item.json.errors).slice(0, 500)}`);
   }
-  for (const r of item.json.results || []) companyId[norm(r.properties[cfg.companyMatchProperty])] = r.id;
+  for (const r of item.json.results || []) { const n = norm(r.properties && r.properties[cfg.companyMatchProperty]); if (n) companyId[n] = r.id; }
 }
 const scope = $('Prepare Customer Batches').all().flatMap((b) => b.json.numbers);
 const missing = scope.filter((n) => !companyId[n]);
