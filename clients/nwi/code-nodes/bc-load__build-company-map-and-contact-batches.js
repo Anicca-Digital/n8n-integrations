@@ -44,6 +44,8 @@ for (const page of $('Read BC Person Contacts').all()) {
       const v = norm(p[bcField]);
       if (v) properties[hsProp] = v;
     }
+    // Generic contacts (e.g. "ACCOUNTS") have no first name / surname in BC: use the display name instead.
+    if (!properties[map.firstName] && !properties[map.surname] && norm(p.displayName)) properties[map.firstName] = norm(p.displayName);
     rows.push({ number: norm(p.number), companyId: companyId[customer], properties });
   }
 }

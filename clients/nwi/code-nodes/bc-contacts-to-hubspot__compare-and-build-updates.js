@@ -18,9 +18,14 @@ for (const item of $input.all()) {
   for (const contact of item.json.results || []) {
     const bc = contacts[norm(contact.properties[cfg.matchProperty])];
     if (!bc) continue;
+    // Generic contacts (e.g. "ACCOUNTS") have no first name / surname in BC: use the display name as the
+    // first name, but only when the HubSpot contact has no name either, so a real name is never replaced.
+    const noNameInBc = !norm(bc.firstName) && !norm(bc.surname);
+    const noNameInHubSpot = !norm(contact.properties[map.firstName]) && !norm(contact.properties[map.surname]);
+    const view = noNameInBc && noNameInHubSpot ? { ...bc, firstName: bc.displayName } : bc;
     const properties = {};
     for (const [bcField, hsProp] of Object.entries(map)) {
-      const bcValue = norm(bc[bcField]);
+      const bcValue = norm(view[bcField]);
       if (!bcValue) continue;                                   // blank in BC: leave HubSpot alone
       const same = bcField === 'email'
         ? bcValue.toLowerCase() === norm(contact.properties[hsProp]).toLowerCase()
