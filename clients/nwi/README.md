@@ -32,3 +32,8 @@ Three scheduled workflows run overnight (Australia/Sydney). Each finds BC record
 
 ## One-off load: BC -> HubSpot (`nwi__bc-load-customers-contacts-to-hubspot__v1.json`)
 Manual run, once. Creates a HubSpot company for every unblocked BC customer and a HubSpot contact for every BC Person contact linked to those customers, then associates each contact to its company. Records missing in HubSpot (matched on `business_central_id` / `business_central_record_id`) are created; records already there are updated, but only the properties whose value differs (BC wins, blanks never clear HubSpot). Re-runs are safe. Company Segment and Sub Segment (`sub_segement` in HubSpot) and contact Segment and Sub Segment (`sub_segment`) are loaded, and kept in sync by the daily syncs. Contact values are read from the BC `Contact_Card` web service.
+
+## Daily HubSpot -> BC syncs (update only, never create) at 03:00
+Run after the BC -> HubSpot syncs, so HubSpot wins when both sides changed the same field. Each finds HubSpot records modified in the 24 hours before the run that already have a BC number, compares them with BC (50 per read) and PATCHes only the differing fields (one call per changed record). A blank HubSpot value never clears BC; a record BC rejects is skipped and the run carries on.
+- `nwi__hubspot-companies-to-bc-customers__v1.json`: companies -> `Customer_Card` (blocked customers skipped; posting groups, payment terms and primary contact never touched).
+- `nwi__hubspot-contacts-to-bc-contacts__v1.json`: contacts -> `Contact_Card` (name = first + last name, email, phone, mobile, segment, sub segment).

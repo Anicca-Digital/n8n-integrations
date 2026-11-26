@@ -1,0 +1,409 @@
+{
+  "name": "[NWI] HubSpot Companies -> BC Customers (daily, update only)",
+  "nodes": [
+    {
+      "name": "Setup Checklist",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        -720
+      ],
+      "parameters": {
+        "content": "## NWI - HubSpot Companies -> BC Customers (daily, UPDATE ONLY): set up before publishing\n1. Connect credentials: **HubSpot Service Key account** and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. Settings -> Error Workflow: set the shared error handler (not set in this file). Settings -> Timezone: Australia/Sydney. Runs at 03:00, after the BC -> HubSpot syncs, so HubSpot wins when both changed.\n3. BC web service **Customer_Card** must be published and writable.\n4. Only HubSpot companies that already have `business_central_id` are synced. Nothing is ever created in BC.\n5. HubSpot values must be valid in BC (segment, sub segment, responsibility center, location code, ABN, country). A record BC rejects is skipped and the run carries on, so check the execution list for failed *Update BC* items.\n6. **Workflow Config** holds the lookback window (24h before the run), batch size and the BC-field -> HubSpot-property map.\n\n**What it does:** finds HubSpot companies modified in the 24 hours before the run, reads their BC customers (50 per call), and updates only the BC fields whose value differs. HubSpot wins. A blank in HubSpot never clears BC. Blocked customers are skipped. Posting groups, payment terms and the primary contact are never touched. Safe to re-run.",
+        "width": 900,
+        "height": 500,
+        "color": 5
+      },
+      "id": "fe316be4-1022-5e21-82c7-7f4aafd0e9e3"
+    },
+    {
+      "name": "Every Day",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 3
+            }
+          ]
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Runs once a day at 03:00 (set the workflow timezone to Australia/Sydney). Production runs only - publish the workflow.",
+      "id": "b48aa7bb-f2e7-5fdb-9f56-ad1e9e079443"
+    },
+    {
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "32575422-e05f-5889-aa96-d22e117e150d",
+              "name": "bcBase",
+              "value": "https://api.businesscentral.dynamics.com/v2.0/0dc6b780-5b9e-4809-afb6-6bc499280f23/Production",
+              "type": "string"
+            },
+            {
+              "id": "a1587ae0-0bc2-5409-9cfb-9937d9faa27f",
+              "name": "bcCompanyId",
+              "value": "4b4f1461-9f6d-ea11-a813-000d3acaa8ce",
+              "type": "string"
+            },
+            {
+              "id": "ed636c8a-6617-570d-9a75-f9632b579167",
+              "name": "bcCompanyName",
+              "value": "National Weighing & Instrument",
+              "type": "string"
+            },
+            {
+              "id": "cc4d7e9a-2220-5a54-a8f1-30dcfba364b7",
+              "name": "lookbackHours",
+              "value": "24",
+              "type": "number"
+            },
+            {
+              "id": "c87d5dda-3b23-5d4f-a857-93698d95f31b",
+              "name": "batchSize",
+              "value": "50",
+              "type": "number"
+            },
+            {
+              "id": "41897241-c167-5cf7-8e47-d977276dc4a6",
+              "name": "matchProperty",
+              "value": "business_central_id",
+              "type": "string"
+            },
+            {
+              "id": "36d64ebd-aa4e-57d8-969e-b3f31c02e3a9",
+              "name": "modifiedProperty",
+              "value": "hs_lastmodifieddate",
+              "type": "string"
+            },
+            {
+              "id": "0ed45342-0831-5bae-b416-ed35d9c108e5",
+              "name": "fieldMap",
+              "value": "{\n  \"Name\": \"name\",\n  \"Address\": \"address\",\n  \"City\": \"city\",\n  \"County\": \"state\",\n  \"Post_Code\": \"zip\",\n  \"Country_Region_Code\": \"country\",\n  \"Phone_No\": \"phone\",\n  \"E_Mail\": \"email\",\n  \"Invoice_Email\": \"invoice_email\",\n  \"Home_Page\": \"website\",\n  \"ABN\": \"abn\",\n  \"Segment\": \"segment\",\n  \"Sub_Segment\": \"sub_segement\",\n  \"Responsibility_Center\": \"responsibility_center\",\n  \"Location_Code\": \"location_code\"\n}",
+              "type": "object"
+            },
+            {
+              "id": "9afc23b3-9ef4-50c9-9cfb-881e09a539f8",
+              "name": "countryMap",
+              "value": "{\"australia\":\"AU\",\"new zealand\":\"NZ\",\"united states\":\"US\",\"united kingdom\":\"GB\",\"singapore\":\"SG\"}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "lookbackHours: how far back from the run time to look (24 = the last 24 hours). matchProperty: HubSpot property holding the BC number. fieldMap: BC field -> HubSpot property.",
+      "id": "9c25c295-a720-55ff-9d78-487c13a7eef7"
+    },
+    {
+      "name": "Find Changed HubSpot Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [\n    { \"propertyName\": $('Workflow Config').first().json.modifiedProperty, \"operator\": \"GTE\", \"value\": String($now.minus({ hours: Number($('Workflow Config').first().json.lookbackHours) }).toMillis()) },\n    { \"propertyName\": $('Workflow Config').first().json.matchProperty, \"operator\": \"HAS_PROPERTY\" }\n  ] }],\n  \"properties\": [$('Workflow Config').first().json.matchProperty, ...Object.keys($('Workflow Config').first().json.fieldMap).map((k) => $('Workflow Config').first().json.fieldMap[k])],\n  \"limit\": 100\n}) }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "after",
+                    "value": "={{ $response.body.paging?.next?.after }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging?.next?.after }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Read-only search (POST is only the HubSpot search convention): every company modified in the window that has a BC number, 100 per page (all pages are read).",
+      "id": "eaa50cf5-8233-5b78-8b84-09d50efad714"
+    },
+    {
+      "name": "Build BC Read Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// All HubSpot records changed in the window (every search page) -> batches for one BC read each.\n// Only records that already have a BC number are kept (this sync never creates anything in BC).\nconst cfg = $('Workflow Config').first().json;\nconst size = Number(cfg.batchSize) || 50;\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\nconst records = $input.all()\n  .flatMap((i) => i.json.results || [])\n  .map((r) => ({ id: r.id, number: norm(r.properties[cfg.matchProperty]), properties: r.properties }))\n  .filter((r) => r.number);\nconst batches = [];\nfor (let i = 0; i < records.length; i += size) {\n  const chunk = records.slice(i, i + size);\n  batches.push({ json: { records: chunk, filter: chunk.map((r) => `No eq '${r.number.replace(/'/g, \"''\")}'`).join(' or ') } });\n}\nreturn batches;"
+      },
+      "notesInFlow": true,
+      "notes": "Groups the changed records into batches (batchSize each). No changed records = no output, so the run ends here.",
+      "id": "fac5642d-a251-5801-a4d9-16b73e4b3990"
+    },
+    {
+      "name": "Read BC Customer Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "={{ $json.filter }}"
+            },
+            {
+              "name": "$select",
+              "value": "No,Blocked,Name,Address,City,County,Post_Code,Country_Region_Code,Phone_No,E_Mail,Invoice_Email,Home_Page,ABN,Segment,Sub_Segment,Responsibility_Center,Location_Code"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "One call per batch: the current BC values, so only real differences are written.",
+      "id": "be329023-4f32-5b8e-9e7b-7d36e4ee2714"
+    },
+    {
+      "name": "Build Customer Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// HubSpot company -> BC customer. Compares each changed company with its BC customer and returns one\n// item per customer that needs an update, with ONLY the differing fields. HubSpot wins.\n// Never sent: blank HubSpot values, anything for blocked customers, posting groups, payment terms.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.fieldMap);            // BC Customer_Card field -> HubSpot company property\nconst countries = asObj(cfg.countryMap);    // 'australia' -> 'AU'\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\nconst toCode = (v) => { const s = norm(v); return /^[A-Za-z]{2}$/.test(s) ? s.toUpperCase() : (countries[s.toLowerCase()] || ''); };\nconst batches = $('Build BC Read Batches').all();\n\nreturn $input.all().flatMap((item, i) => {\n  const bc = {};\n  for (const c of item.json.value || []) bc[norm(c.No)] = c;\n  const out = [];\n  for (const rec of batches[i].json.records) {\n    const cur = bc[rec.number];\n    if (!cur || norm(cur.Blocked)) continue;                     // not in BC, or blocked: skip\n    const body = {};\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const value = norm(rec.properties[hsProp]);\n      if (!value) continue;                                      // blank in HubSpot: never clears BC\n      if (bcField === 'Country_Region_Code') {\n        const code = toCode(value);\n        if (code && code !== norm(cur[bcField]).toUpperCase()) body[bcField] = code;\n      } else if (value !== norm(cur[bcField])) {\n        body[bcField] = value;\n      }\n    }\n    if (Object.keys(body).length) out.push({ json: { number: rec.number, body } });\n  }\n  return out;\n});"
+      },
+      "notesInFlow": true,
+      "notes": "One item per BC record that needs an update, with only the differing fields. HubSpot wins; blanks are never sent.",
+      "id": "8a793bfa-f3c9-5ad4-9045-ce6e0cf63b35"
+    },
+    {
+      "name": "Update BC Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card('{{ $json.number }}')",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "If-Match",
+              "value": "*"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "notesInFlow": true,
+      "notes": "One PATCH per changed record (BC has no multi-record update). Update only: never creates. If BC rejects a value the record is skipped and the run carries on.",
+      "id": "8e35d3db-038f-567b-a1f9-701553e85f6e"
+    },
+    {
+      "name": "Section 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        184,
+        -140
+      ],
+      "parameters": {
+        "content": "## 1. Find changed HubSpot companies\nModified in the 24 hours before the run, with a BC number.",
+        "width": 508,
+        "height": 420,
+        "color": 7
+      },
+      "id": "009e78fa-18af-54a0-8b0a-1561e9515819"
+    },
+    {
+      "name": "Section 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        632,
+        -140
+      ],
+      "parameters": {
+        "content": "## 2. Compare with BC\nCurrent BC values, 50 per call; only real differences are kept.",
+        "width": 508,
+        "height": 420,
+        "color": 4
+      },
+      "id": "72095520-0818-5694-9e8d-bde190c64d0d"
+    },
+    {
+      "name": "Section 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        -140
+      ],
+      "parameters": {
+        "content": "## 3. Update BC\nOne PATCH per changed record.",
+        "width": 284,
+        "height": 420,
+        "color": 6
+      },
+      "id": "21e52d1e-e1c0-5b75-b88a-e47c3336d5af"
+    }
+  ],
+  "connections": {
+    "Every Day": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Find Changed HubSpot Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Changed HubSpot Companies": {
+      "main": [
+        [
+          {
+            "node": "Build BC Read Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build BC Read Batches": {
+      "main": [
+        [
+          {
+            "node": "Read BC Customer Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Customer Details": {
+      "main": [
+        [
+          {
+            "node": "Build Customer Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Customer Updates": {
+      "main": [
+        [
+          {
+            "node": "Update BC Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney"
+  },
+  "pinData": {}
+}
