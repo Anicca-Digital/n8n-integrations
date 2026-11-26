@@ -1,0 +1,49 @@
+// 1) Builds the full BC customer number -> HubSpot company id map (existing + just created).
+// 2) Joins every BC Person contact to its customer (via the customer's company contact) and
+//    returns contact batches of 100. Contacts of blocked / out-of-scope customers are skipped.
+const cfg = $('Workflow Config').first().json;
+const asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
+const map = asObj(cfg.contactFieldMap);       // BC contact field -> HubSpot contact property
+const norm = (v) => (v === null || v === undefined ? '' : String(v).trim());
+
+const companyId = {};                          // BC customer number -> HubSpot company id
+for (const item of $('Build Company Creates').all()) Object.assign(companyId, item.json.existing);   // already in HubSpot
+for (const item of $input.all()) {                                                                    // just created
+  if (item.json.errors && item.json.errors.length) {
+    throw new Error(`HubSpot rejected some company creates: ${JSON.stringify(item.json.errors).slice(0, 500)}`);
+  }
+  for (const r of item.json.results || []) companyId[norm(r.properties[cfg.companyMatchProperty])] = r.id;
+}
+const scope = $('Prepare Customer Batches').all().flatMap((b) => b.json.numbers);
+const missing = scope.filter((n) => !companyId[n]);
+if (missing.length) throw new Error(`${missing.length} customers have no HubSpot company after the create step, e.g. ${missing.slice(0, 5).join(', ')}`);
+
+// customer number -> its BC company contact number
+const customerByCompanyContact = {};
+for (const page of $('Read BC Company Contacts').all()) {
+  for (const c of page.json.value || []) {
+    const company = (c.contactsInformation || []).find((x) => x.contactType === 'Company');
+    if (company && companyId[norm(c.number)]) customerByCompanyContact[norm(company.contactNumber)] = norm(c.number);
+  }
+}
+
+const rows = [];
+for (const page of $('Read BC Person Contacts').all()) {
+  for (const p of page.json.value || []) {
+    const customer = customerByCompanyContact[norm(p.companyNumber)];
+    if (!customer) continue;                                     // not linked to an in-scope customer
+    const properties = { [cfg.contactMatchProperty]: norm(p.number) };
+    for (const [bcField, hsProp] of Object.entries(map)) {
+      const v = norm(p[bcField]);
+      if (v) properties[hsProp] = v;
+    }
+    rows.push({ number: norm(p.number), companyId: companyId[customer], properties });
+  }
+}
+
+const out = [];
+for (let i = 0; i < rows.length; i += 100) {
+  const contacts = rows.slice(i, i + 100);
+  out.push({ json: { numbers: contacts.map((r) => r.number), contacts } });
+}
+return out;

@@ -1,0 +1,863 @@
+{
+  "name": "[NWI] One-off Load: BC Customers + Contacts -> HubSpot",
+  "nodes": [
+    {
+      "name": "Setup Checklist",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -250,
+        -760
+      ],
+      "parameters": {
+        "content": "## NWI - One-off load: BC customers + contacts -> HubSpot companies + contacts\n**Run this once, by hand (Execute workflow). Test first:** set `maxCustomers` in *Workflow Config* to 50, run, check the records in HubSpot, then set it to 0 (= all) and run again. Re-runs are safe: anything already in HubSpot (matched on the BC number) is skipped.\n1. Credentials: **HubSpot Service Key account** (companies + contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. BC web service **Customer_Card** (page 21) must be published. Confirm the BC field `Sub_Segment` exists there (the first test run fails with a clear error if the name differs).\n3. HubSpot company properties needed: `business_central_id`, `segment`, `sub_segement` (as spelled in HubSpot), `abn`, `invoice_email`, `responsibility_center`, `location_code`. Contact: `business_central_record_id`. Dropdown values (segment, sub segment, responsibility center, location code) must include every BC value or that batch of 100 fails.\n4. BC reads are paged. In each *Read BC ...* node, Options -> Pagination should show \"Response Contains Next URL\".\n5. Blocked customers are skipped. Only Person contacts linked to an in-scope customer are loaded. No owner is set.\n6. Contacts are associated to their company (company becomes the contact's primary company).\n7. After the load, delete or leave this workflow inactive. Daily syncs keep BC and HubSpot aligned afterwards.",
+        "width": 900,
+        "height": 500,
+        "color": 5
+      },
+      "id": "63b9570a-46d4-5eb1-bad0-071e7b4aef12"
+    },
+    {
+      "name": "Section 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -150
+      ],
+      "parameters": {
+        "content": "## 1. Read from Business Central\nAll customers, their company contacts and all Person contacts (paged, a few big calls).",
+        "width": 1180,
+        "height": 440,
+        "color": 7
+      },
+      "id": "7112c007-5863-5c5f-ac54-74b1a991a105"
+    },
+    {
+      "name": "Section 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        -150
+      ],
+      "parameters": {
+        "content": "## 2. Companies\nFind existing (by business_central_id), create the missing ones in batches of 100.",
+        "width": 1404,
+        "height": 440,
+        "color": 4
+      },
+      "id": "2fa3dc70-a1bb-5a54-9e59-162d2805ccdc"
+    },
+    {
+      "name": "Section 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2424,
+        -150
+      ],
+      "parameters": {
+        "content": "## 3. Contacts + associations\nFind existing (by business_central_record_id), create the missing ones, then associate every contact to its company.",
+        "width": 1628,
+        "height": 440,
+        "color": 6
+      },
+      "id": "7656c6c8-c4fd-5c06-b133-f7872eecfe20"
+    },
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        0
+      ],
+      "parameters": {},
+      "id": "26a9fa76-dfba-50e1-9d2d-74f1db3624ab"
+    },
+    {
+      "name": "Workflow Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e23d3c08-a5f1-5c04-b699-eab43b533c5a",
+              "name": "bcBase",
+              "value": "https://api.businesscentral.dynamics.com/v2.0/0dc6b780-5b9e-4809-afb6-6bc499280f23/Production",
+              "type": "string"
+            },
+            {
+              "id": "94235ada-94c4-5ca5-a359-d1efa95f2b19",
+              "name": "bcCompanyId",
+              "value": "4b4f1461-9f6d-ea11-a813-000d3acaa8ce",
+              "type": "string"
+            },
+            {
+              "id": "8f82d5c2-7339-57a4-831c-97bd4fec9a7a",
+              "name": "bcCompanyName",
+              "value": "National Weighing & Instrument",
+              "type": "string"
+            },
+            {
+              "id": "0082fe2d-fb69-5e02-86d8-6eb24c0b6a5f",
+              "name": "maxCustomers",
+              "value": "0",
+              "type": "number"
+            },
+            {
+              "id": "3408f2cf-6565-5b65-816d-d0b3525571a4",
+              "name": "companyMatchProperty",
+              "value": "business_central_id",
+              "type": "string"
+            },
+            {
+              "id": "53417201-f160-5bb6-ad66-ad8389a087c2",
+              "name": "contactMatchProperty",
+              "value": "business_central_record_id",
+              "type": "string"
+            },
+            {
+              "id": "69ec582a-6caf-5c58-9cfd-bec9afa7ee0d",
+              "name": "companyFieldMap",
+              "value": "{\n  \"Name\": \"name\",\n  \"Address\": \"address\",\n  \"City\": \"city\",\n  \"County\": \"state\",\n  \"Post_Code\": \"zip\",\n  \"Country_Region_Code\": \"country\",\n  \"Phone_No\": \"phone\",\n  \"E_Mail\": \"email\",\n  \"Invoice_Email\": \"invoice_email\",\n  \"Home_Page\": \"website\",\n  \"Segment\": \"segment\",\n  \"Sub_Segment\": \"sub_segement\",\n  \"Responsibility_Center\": \"responsibility_center\",\n  \"Location_Code\": \"location_code\",\n  \"ABN\": \"abn\"\n}",
+              "type": "object"
+            },
+            {
+              "id": "bd48d489-25f2-5379-81ed-1948ac4bad44",
+              "name": "contactFieldMap",
+              "value": "{\n  \"firstName\": \"firstname\",\n  \"surname\": \"lastname\",\n  \"email\": \"email\",\n  \"phoneNumber\": \"phone\",\n  \"mobilePhoneNumber\": \"mobilephone\"\n}",
+              "type": "object"
+            },
+            {
+              "id": "f092ed33-097e-57b5-a1f1-a419426c9712",
+              "name": "countryMap",
+              "value": "{\"australia\":\"AU\",\"new zealand\":\"NZ\",\"united states\":\"US\",\"united kingdom\":\"GB\",\"singapore\":\"SG\"}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "maxCustomers: 0 = all customers; set a number (e.g. 50) to test. companyFieldMap / contactFieldMap: BC field -> HubSpot property.",
+      "id": "bfaec34a-0776-52e1-b956-471e6398287d"
+    },
+    {
+      "name": "Read BC Customers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/ODataV4/Company('{{ encodeURIComponent($('Workflow Config').first().json.bcCompanyName) }}')/Customer_Card",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$select",
+              "value": "No,Blocked,Name,Address,City,County,Post_Code,Country_Region_Code,Phone_No,E_Mail,Invoice_Email,Home_Page,Segment,Sub_Segment,Responsibility_Center,Location_Code,ABN"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body['@odata.nextLink'] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body['@odata.nextLink'] }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Every customer with all the fields we load. Blocked ones are dropped in the next step.",
+      "id": "4277bb0f-a4d4-503f-952a-5c7ec98929e1"
+    },
+    {
+      "name": "Read BC Company Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/customers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$select",
+              "value": "number"
+            },
+            {
+              "name": "$expand",
+              "value": "contactsInformation"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body['@odata.nextLink'] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body['@odata.nextLink'] }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "notesInFlow": true,
+      "notes": "Each customer's BC company contact number: the link between a customer and its Person contacts. Runs once.",
+      "id": "c796233a-abad-5360-afae-7c26426876b3"
+    },
+    {
+      "name": "Read BC Person Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Workflow Config').first().json.bcBase }}/api/v2.0/companies({{ $('Workflow Config').first().json.bcCompanyId }})/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "type eq 'Person'"
+            },
+            {
+              "name": "$select",
+              "value": "number,companyNumber,firstName,surname,email,phoneNumber,mobilePhoneNumber"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body['@odata.nextLink'] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body['@odata.nextLink'] }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Business Central – NWI Group (client credentials)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "notesInFlow": true,
+      "notes": "Every Person contact with the fields we load. Runs once.",
+      "id": "8419c89c-ffe2-5a73-97c9-dc0cd8afbbf3"
+    },
+    {
+      "name": "Prepare Customer Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// All BC customers -> HubSpot company payloads, in batches of 100.\n// Skips blocked customers and customers without a name. maxCustomers > 0 limits the run (for testing).\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.companyFieldMap);       // BC Customer_Card field -> HubSpot company property\nconst countries = asObj(cfg.countryMap);      // 'australia' -> 'AU'\nconst title = (s) => s.replace(/\\b\\w/g, (c) => c.toUpperCase());\nconst countryName = Object.fromEntries(Object.entries(countries).map(([n, c]) => [c, title(n)]));\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nlet customers = [];\nfor (const page of $('Read BC Customers').all()) customers = customers.concat(page.json.value || []);\ncustomers = customers.filter((c) => !norm(c.Blocked) && norm(c.Name));   // skip blocked + nameless\nconst max = Number(cfg.maxCustomers) || 0;\nif (max > 0) customers = customers.slice(0, max);\n\nconst rows = customers.map((c) => {\n  const properties = { [cfg.companyMatchProperty]: norm(c.No) };\n  for (const [bcField, hsProp] of Object.entries(map)) {\n    let v = norm(c[bcField]);\n    if (!v) continue;                                            // blank in BC: not sent\n    if (bcField === 'Country_Region_Code') v = countryName[v.toUpperCase()] || v;\n    properties[hsProp] = v;\n  }\n  return { number: norm(c.No), properties };\n});\n\nconst out = [];\nfor (let i = 0; i < rows.length; i += 100) {\n  const customersBatch = rows.slice(i, i + 100);\n  out.push({ json: { numbers: customersBatch.map((r) => r.number), customers: customersBatch } });\n}\nreturn out;"
+      },
+      "notesInFlow": true,
+      "notes": "Skips blocked / nameless customers, applies maxCustomers, builds the company properties and batches of 100.",
+      "id": "d50b6573-9ff6-5dc3-8190-0b611d748f8f"
+    },
+    {
+      "name": "Find Existing Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/search",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [{ \"propertyName\": $('Workflow Config').first().json.companyMatchProperty, \"operator\": \"IN\", \"values\": $json.numbers }] }],\n  \"properties\": [$('Workflow Config').first().json.companyMatchProperty],\n  \"limit\": 100\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Read-only search (POST is only the HubSpot search convention): one call per batch of 100 customers.",
+      "id": "d033b02a-3013-5b50-ac9a-21153f575316"
+    },
+    {
+      "name": "Build Company Creates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// For each batch: the HubSpot companies that already exist (matched on business_central_id) are\n// left alone; the rest become the create payload. Items stay in the same order as the batches.\nconst cfg = $('Workflow Config').first().json;\nconst batches = $('Prepare Customer Batches').all();\nreturn $input.all().map((item, i) => {\n  const batch = batches[i].json;\n  const existing = {};\n  for (const r of item.json.results || []) existing[String(r.properties[cfg.companyMatchProperty]).trim()] = r.id;\n  const inputs = batch.customers\n    .filter((c) => !existing[c.number])\n    .map((c) => ({ properties: c.properties }));\n  return { json: { inputs, existing } };\n});"
+      },
+      "notesInFlow": true,
+      "notes": "Companies already in HubSpot are left alone; the rest go into the create payload.",
+      "id": "60bcfba9-8dd8-5969-afe1-89f8e7959cb8"
+    },
+    {
+      "name": "Has New Companies",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "28cf62fe-3d52-5767-af73-13d02ff7c6ab",
+              "leftValue": "={{ String($json.inputs.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "true = some companies need creating in this batch.",
+      "id": "baeda465-8148-56b4-843c-9eec4dbb2e19"
+    },
+    {
+      "name": "Create Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        -170
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/batch/create",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"inputs\": $json.inputs\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Batch create, up to 100 companies per call. Create call: no retry, by design.",
+      "id": "a82975a1-d0e6-5ab0-85db-86eccd6ba9f5"
+    },
+    {
+      "name": "Wait For Company Step",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2016,
+        0
+      ],
+      "parameters": {},
+      "notesInFlow": true,
+      "notes": "Both paths (created / nothing to create) meet here so the contact step starts once, after every company exists.",
+      "id": "5da190d2-6063-52fa-8c1c-7ce143bdeec5"
+    },
+    {
+      "name": "Build Company Map And Contact Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// 1) Builds the full BC customer number -> HubSpot company id map (existing + just created).\n// 2) Joins every BC Person contact to its customer (via the customer's company contact) and\n//    returns contact batches of 100. Contacts of blocked / out-of-scope customers are skipped.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.contactFieldMap);       // BC contact field -> HubSpot contact property\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nconst companyId = {};                          // BC customer number -> HubSpot company id\nfor (const item of $('Build Company Creates').all()) Object.assign(companyId, item.json.existing);   // already in HubSpot\nfor (const item of $input.all()) {                                                                    // just created\n  if (item.json.errors && item.json.errors.length) {\n    throw new Error(`HubSpot rejected some company creates: ${JSON.stringify(item.json.errors).slice(0, 500)}`);\n  }\n  for (const r of item.json.results || []) companyId[norm(r.properties[cfg.companyMatchProperty])] = r.id;\n}\nconst scope = $('Prepare Customer Batches').all().flatMap((b) => b.json.numbers);\nconst missing = scope.filter((n) => !companyId[n]);\nif (missing.length) throw new Error(`${missing.length} customers have no HubSpot company after the create step, e.g. ${missing.slice(0, 5).join(', ')}`);\n\n// customer number -> its BC company contact number\nconst customerByCompanyContact = {};\nfor (const page of $('Read BC Company Contacts').all()) {\n  for (const c of page.json.value || []) {\n    const company = (c.contactsInformation || []).find((x) => x.contactType === 'Company');\n    if (company && companyId[norm(c.number)]) customerByCompanyContact[norm(company.contactNumber)] = norm(c.number);\n  }\n}\n\nconst rows = [];\nfor (const page of $('Read BC Person Contacts').all()) {\n  for (const p of page.json.value || []) {\n    const customer = customerByCompanyContact[norm(p.companyNumber)];\n    if (!customer) continue;                                     // not linked to an in-scope customer\n    const properties = { [cfg.contactMatchProperty]: norm(p.number) };\n    for (const [bcField, hsProp] of Object.entries(map)) {\n      const v = norm(p[bcField]);\n      if (v) properties[hsProp] = v;\n    }\n    rows.push({ number: norm(p.number), companyId: companyId[customer], properties });\n  }\n}\n\nconst out = [];\nfor (let i = 0; i < rows.length; i += 100) {\n  const contacts = rows.slice(i, i + 100);\n  out.push({ json: { numbers: contacts.map((r) => r.number), contacts } });\n}\nreturn out;"
+      },
+      "notesInFlow": true,
+      "notes": "Customer number -> HubSpot company id (existing + created), then every Person contact joined to its customer. Batches of 100.",
+      "id": "aca551ca-76b6-50d1-a442-e158560387a7"
+    },
+    {
+      "name": "Find Existing Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2464,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"filterGroups\": [{ \"filters\": [{ \"propertyName\": $('Workflow Config').first().json.contactMatchProperty, \"operator\": \"IN\", \"values\": $json.numbers }] }],\n  \"properties\": [$('Workflow Config').first().json.contactMatchProperty],\n  \"limit\": 100\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Read-only search: one call per batch of 100 contacts.",
+      "id": "fa574535-b3e9-5603-861b-3d13a1f72cd5"
+    },
+    {
+      "name": "Build Contact Creates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// For each batch: HubSpot contacts that already exist (matched on business_central_record_id) are\n// left alone; the rest become the create payload. `pairs` keeps contact -> company for the association step.\nconst cfg = $('Workflow Config').first().json;\nconst batches = $('Build Company Map And Contact Batches').all();\nreturn $input.all().map((item, i) => {\n  const batch = batches[i].json;\n  const existing = {};\n  for (const r of item.json.results || []) existing[String(r.properties[cfg.contactMatchProperty]).trim()] = r.id;\n  const inputs = batch.contacts.filter((c) => !existing[c.number]).map((c) => ({ properties: c.properties }));\n  const pairs = batch.contacts.map((c) => ({ number: c.number, companyId: c.companyId }));\n  return { json: { inputs, existing, pairs } };\n});"
+      },
+      "notesInFlow": true,
+      "notes": "Contacts already in HubSpot are left alone; the rest go into the create payload.",
+      "id": "14b87566-ba85-552e-85f0-b6a5a777866b"
+    },
+    {
+      "name": "Has New Contacts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2912,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "58c55cc5-21d4-5ede-95b5-f8ef95213743",
+              "leftValue": "={{ String($json.inputs.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "true = some contacts need creating in this batch.",
+      "id": "ca24f6c4-912a-5797-8f54-2af72a670223"
+    },
+    {
+      "name": "Create Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3136,
+        -170
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/batch/create",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"inputs\": $json.inputs\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Batch create, up to 100 contacts per call. Create call: no retry, by design. A contact whose email already exists in HubSpot is rejected: the run stops with the details.",
+      "id": "333160cd-f47e-5c61-948d-c14571f9c6fe"
+    },
+    {
+      "name": "Wait For Contact Step",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3360,
+        0
+      ],
+      "parameters": {},
+      "notesInFlow": true,
+      "notes": "Both paths meet here so the association step starts once, after every contact exists.",
+      "id": "1ad1b93e-5e19-52ca-9825-a1c0028157ef"
+    },
+    {
+      "name": "Build Associations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3584,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Builds the contact -> company associations (default association, so the company becomes the\n// contact's primary company). Runs for every contact, new or existing: it is idempotent.\nconst cfg = $('Workflow Config').first().json;\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\nconst contactId = {};\nfor (const item of $('Build Contact Creates').all()) Object.assign(contactId, item.json.existing);   // already in HubSpot\nfor (const item of $input.all()) {                                                                    // just created\n  if (item.json.errors && item.json.errors.length) {\n    throw new Error(`HubSpot rejected some contact creates: ${JSON.stringify(item.json.errors).slice(0, 500)}`);\n  }\n  for (const r of item.json.results || []) contactId[norm(r.properties[cfg.contactMatchProperty])] = r.id;\n}\nconst pairs = $('Build Contact Creates').all().flatMap((i) => i.json.pairs);\nconst missing = pairs.filter((p) => !contactId[p.number]);\nif (missing.length) throw new Error(`${missing.length} contacts have no HubSpot id after the create step, e.g. ${missing.slice(0, 5).map((p) => p.number).join(', ')}`);\n\nconst inputs = pairs.map((p) => ({ from: { id: contactId[p.number] }, to: { id: p.companyId } }));\nconst out = [];\nfor (let i = 0; i < inputs.length; i += 100) out.push({ json: { inputs: inputs.slice(i, i + 100) } });\nreturn out;"
+      },
+      "notesInFlow": true,
+      "notes": "Pairs every contact with its company, in batches of 100. Runs for new and existing contacts: association is idempotent.",
+      "id": "9121a751-9aca-555a-bdfe-71bb6f3b0a06"
+    },
+    {
+      "name": "Associate Contacts To Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3808,
+        0
+      ],
+      "parameters": {
+        "url": "=https://api.hubapi.com/crm/v4/associations/contacts/companies/batch/associate/default",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  \"inputs\": $json.inputs\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notesInFlow": true,
+      "notes": "Default association (the company becomes the contact's primary company), up to 100 per call. Safe to repeat.",
+      "id": "8cd0faa3-c244-510c-8081-7262d65db456"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Workflow Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Config": {
+      "main": [
+        [
+          {
+            "node": "Read BC Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Customers": {
+      "main": [
+        [
+          {
+            "node": "Read BC Company Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Company Contacts": {
+      "main": [
+        [
+          {
+            "node": "Read BC Person Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read BC Person Contacts": {
+      "main": [
+        [
+          {
+            "node": "Prepare Customer Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Customer Batches": {
+      "main": [
+        [
+          {
+            "node": "Find Existing Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing Companies": {
+      "main": [
+        [
+          {
+            "node": "Build Company Creates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Company Creates": {
+      "main": [
+        [
+          {
+            "node": "Has New Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New Companies": {
+      "main": [
+        [
+          {
+            "node": "Create Companies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait For Company Step",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Create Companies": {
+      "main": [
+        [
+          {
+            "node": "Wait For Company Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait For Company Step": {
+      "main": [
+        [
+          {
+            "node": "Build Company Map And Contact Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Company Map And Contact Batches": {
+      "main": [
+        [
+          {
+            "node": "Find Existing Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing Contacts": {
+      "main": [
+        [
+          {
+            "node": "Build Contact Creates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Contact Creates": {
+      "main": [
+        [
+          {
+            "node": "Has New Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New Contacts": {
+      "main": [
+        [
+          {
+            "node": "Create Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait For Contact Step",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Create Contacts": {
+      "main": [
+        [
+          {
+            "node": "Wait For Contact Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait For Contact Step": {
+      "main": [
+        [
+          {
+            "node": "Build Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Associations": {
+      "main": [
+        [
+          {
+            "node": "Associate Contacts To Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

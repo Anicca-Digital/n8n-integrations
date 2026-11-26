@@ -90,7 +90,7 @@
             {
               "id": "91eca889-a3a9-5808-99aa-598dfdce9c67",
               "name": "fieldMap",
-              "value": "{\n  \"Name\": \"name\",\n  \"Address\": \"address\",\n  \"City\": \"city\",\n  \"County\": \"state\",\n  \"Post_Code\": \"zip\",\n  \"Country_Region_Code\": \"country\",\n  \"Phone_No\": \"phone\",\n  \"E_Mail\": \"email\",\n  \"Invoice_Email\": \"invoice_email\",\n  \"Home_Page\": \"website\",\n  \"Segment\": \"segment\",\n  \"Responsibility_Center\": \"responsibility_center\",\n  \"Location_Code\": \"location_code\",\n  \"ABN\": \"abn\"\n}",
+              "value": "{\n  \"Name\": \"name\",\n  \"Address\": \"address\",\n  \"City\": \"city\",\n  \"County\": \"state\",\n  \"Post_Code\": \"zip\",\n  \"Country_Region_Code\": \"country\",\n  \"Phone_No\": \"phone\",\n  \"E_Mail\": \"email\",\n  \"Invoice_Email\": \"invoice_email\",\n  \"Home_Page\": \"website\",\n  \"Segment\": \"segment\",\n  \"Sub_Segment\": \"sub_segement\",\n  \"Responsibility_Center\": \"responsibility_center\",\n  \"Location_Code\": \"location_code\",\n  \"ABN\": \"abn\"\n}",
               "type": "object"
             },
             {
@@ -246,7 +246,7 @@
             },
             {
               "name": "$select",
-              "value": "No,Name,Address,City,County,Post_Code,Country_Region_Code,Phone_No,E_Mail,Invoice_Email,Home_Page,Segment,Responsibility_Center,Location_Code,ABN"
+              "value": "No,Name,Address,City,County,Post_Code,Country_Region_Code,Phone_No,E_Mail,Invoice_Email,Home_Page,Segment,Sub_Segment,Responsibility_Center,Location_Code,ABN"
             }
           ]
         },

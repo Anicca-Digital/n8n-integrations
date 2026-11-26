@@ -29,3 +29,6 @@ Three scheduled workflows run at midnight (Australia/Sydney). Each finds BC reco
 - `nwi__bc-salesorders-to-hubspot-deals__v1.json`: sales orders -> deals (match `bc_order_id`).
 - `nwi__bc-customers-to-hubspot-companies__v1.json`: customers -> companies (match `business_central_id`).
 - `nwi__bc-contacts-to-hubspot-contacts__v1.json`: Person contacts -> contacts (match `business_central_record_id`).
+
+## One-off load: BC -> HubSpot (`nwi__bc-load-customers-contacts-to-hubspot__v1.json`)
+Manual run, once. Creates a HubSpot company for every unblocked BC customer and a HubSpot contact for every BC Person contact linked to those customers, then associates each contact to its company. Records already in HubSpot (matched on `business_central_id` / `business_central_record_id`) are skipped, so re-runs are safe. Test first with `maxCustomers` = 50. Segment and Sub Segment (`sub_segement` in HubSpot) are loaded and also kept in sync by the daily customer sync.
