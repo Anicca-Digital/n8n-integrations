@@ -1,5 +1,5 @@
 // All BC customers -> HubSpot company payloads, in batches of 100.
-// Skips blocked customers and customers without a name. maxCustomers > 0 limits the run (for testing).
+// Skips blocked customers and customers without a name.
 const cfg = $('Workflow Config').first().json;
 const asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
 const map = asObj(cfg.companyFieldMap);       // BC Customer_Card field -> HubSpot company property
@@ -11,8 +11,6 @@ const norm = (v) => (v === null || v === undefined ? '' : String(v).trim());
 let customers = [];
 for (const page of $('Read BC Customers').all()) customers = customers.concat(page.json.value || []);
 customers = customers.filter((c) => !norm(c.Blocked) && norm(c.Name));   // skip blocked + nameless
-const max = Number(cfg.maxCustomers) || 0;
-if (max > 0) customers = customers.slice(0, max);
 
 const rows = customers.map((c) => {
   const properties = { [cfg.companyMatchProperty]: norm(c.No) };

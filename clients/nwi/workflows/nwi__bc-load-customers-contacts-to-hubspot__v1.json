@@ -10,7 +10,7 @@
         -760
       ],
       "parameters": {
-        "content": "## NWI - One-off load: BC customers + contacts -> HubSpot companies + contacts\n**Run this once, by hand (Execute workflow). Test first:** set `maxCustomers` in *Workflow Config* to 50, run, check the records in HubSpot, then set it to 0 (= all) and run again. Re-runs are safe: records missing in HubSpot (matched on the BC number) are CREATED; records already there are UPDATED, but only properties whose value differs (BC wins, blanks never clear HubSpot).\n1. Credentials: **HubSpot Service Key account** (companies + contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. BC web service **Customer_Card** (page 21) must be published. Also publish the BC contact card page (5050) as a web service named `Contact_Card` (or change bcContactPage in Workflow Config): contact Segment and Sub_Segment are read from it. Confirm the BC field `Sub_Segment` exists on Customer_Card and Contact_Card (the first test run fails with a clear error if the name differs).\n3. HubSpot company properties needed: `business_central_id`, `segment`, `sub_segement` (as spelled in HubSpot), `abn`, `invoice_email`, `responsibility_center`, `location_code`. Contact: `business_central_record_id`. Dropdown values (segment, sub segment, responsibility center, location code) must include every BC value or that batch of 100 fails.\n4. BC reads are paged. In each *Read BC ...* node, Options -> Pagination should show \"Response Contains Next URL\".\n5. Blocked customers are skipped. Only Person contacts linked to an in-scope customer are loaded. No owner is set.\n6. Contacts are associated to their company (company becomes the contact's primary company).\n7. After the load, delete or leave this workflow inactive. Daily syncs keep BC and HubSpot aligned afterwards.",
+        "content": "## NWI - One-off load: BC customers + contacts -> HubSpot companies + contacts\n**Run this once, by hand (Execute workflow).** Re-runs are safe: records missing in HubSpot (matched on the BC number) are CREATED; records already there are UPDATED, but only properties whose value differs (BC wins, blanks never clear HubSpot).\n1. Credentials: **HubSpot Service Key account** (companies + contacts read/write) and **Business Central – NWI Group (client credentials)**. Confirm no \"not connected\" warning on any node.\n2. BC web service **Customer_Card** (page 21) must be published. Also publish the BC contact card page (5050) as a web service named `Contact_Card` (or change bcContactPage in Workflow Config): contact Segment and Sub_Segment are read from it. Confirm the BC field `Sub_Segment` exists on Customer_Card and Contact_Card (the first test run fails with a clear error if the name differs).\n3. HubSpot company properties needed: `business_central_id`, `segment`, `sub_segement` (as spelled in HubSpot), `abn`, `invoice_email`, `responsibility_center`, `location_code`. Contact: `business_central_record_id`. Dropdown values (segment, sub segment, responsibility center, location code) must include every BC value or that batch of 100 fails.\n4. BC reads are paged. In each *Read BC ...* node, Options -> Pagination should show \"Response Contains Next URL\".\n5. Blocked customers are skipped. Only Person contacts linked to an in-scope customer are loaded. No owner is set.\n6. Contacts are associated to their company (company becomes the contact's primary company).\n7. After the load, delete or leave this workflow inactive. Daily syncs keep BC and HubSpot aligned afterwards.",
         "width": 900,
         "height": 500,
         "color": 5
@@ -106,12 +106,6 @@
               "type": "string"
             },
             {
-              "id": "0082fe2d-fb69-5e02-86d8-6eb24c0b6a5f",
-              "name": "maxCustomers",
-              "value": "0",
-              "type": "number"
-            },
-            {
               "id": "a61cad86-abc6-538f-bf2a-164e6648481e",
               "name": "bcContactPage",
               "value": "Contact_Card",
@@ -152,7 +146,7 @@
         "options": {}
       },
       "notesInFlow": true,
-      "notes": "maxCustomers: 0 = all customers; set a number (e.g. 50) to test. companyFieldMap / contactFieldMap: BC field -> HubSpot property.",
+      "notes": "companyFieldMap / contactFieldMap: BC field -> HubSpot property. bcContactPage: BC web service name for the contact card.",
       "id": "bfaec34a-0776-52e1-b956-471e6398287d"
     },
     {
@@ -391,10 +385,10 @@
         0
       ],
       "parameters": {
-        "jsCode": "// All BC customers -> HubSpot company payloads, in batches of 100.\n// Skips blocked customers and customers without a name. maxCustomers > 0 limits the run (for testing).\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.companyFieldMap);       // BC Customer_Card field -> HubSpot company property\nconst countries = asObj(cfg.countryMap);      // 'australia' -> 'AU'\nconst title = (s) => s.replace(/\\b\\w/g, (c) => c.toUpperCase());\nconst countryName = Object.fromEntries(Object.entries(countries).map(([n, c]) => [c, title(n)]));\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nlet customers = [];\nfor (const page of $('Read BC Customers').all()) customers = customers.concat(page.json.value || []);\ncustomers = customers.filter((c) => !norm(c.Blocked) && norm(c.Name));   // skip blocked + nameless\nconst max = Number(cfg.maxCustomers) || 0;\nif (max > 0) customers = customers.slice(0, max);\n\nconst rows = customers.map((c) => {\n  const properties = { [cfg.companyMatchProperty]: norm(c.No) };\n  for (const [bcField, hsProp] of Object.entries(map)) {\n    let v = norm(c[bcField]);\n    if (!v) continue;                                            // blank in BC: not sent\n    if (bcField === 'Country_Region_Code') v = countryName[v.toUpperCase()] || v;\n    properties[hsProp] = v;\n  }\n  return { number: norm(c.No), properties };\n});\n\nconst out = [];\nfor (let i = 0; i < rows.length; i += 100) {\n  const customersBatch = rows.slice(i, i + 100);\n  out.push({ json: { numbers: customersBatch.map((r) => r.number), customers: customersBatch } });\n}\nreturn out;"
+        "jsCode": "// All BC customers -> HubSpot company payloads, in batches of 100.\n// Skips blocked customers and customers without a name.\nconst cfg = $('Workflow Config').first().json;\nconst asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v);\nconst map = asObj(cfg.companyFieldMap);       // BC Customer_Card field -> HubSpot company property\nconst countries = asObj(cfg.countryMap);      // 'australia' -> 'AU'\nconst title = (s) => s.replace(/\\b\\w/g, (c) => c.toUpperCase());\nconst countryName = Object.fromEntries(Object.entries(countries).map(([n, c]) => [c, title(n)]));\nconst norm = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\nlet customers = [];\nfor (const page of $('Read BC Customers').all()) customers = customers.concat(page.json.value || []);\ncustomers = customers.filter((c) => !norm(c.Blocked) && norm(c.Name));   // skip blocked + nameless\n\nconst rows = customers.map((c) => {\n  const properties = { [cfg.companyMatchProperty]: norm(c.No) };\n  for (const [bcField, hsProp] of Object.entries(map)) {\n    let v = norm(c[bcField]);\n    if (!v) continue;                                            // blank in BC: not sent\n    if (bcField === 'Country_Region_Code') v = countryName[v.toUpperCase()] || v;\n    properties[hsProp] = v;\n  }\n  return { number: norm(c.No), properties };\n});\n\nconst out = [];\nfor (let i = 0; i < rows.length; i += 100) {\n  const customersBatch = rows.slice(i, i + 100);\n  out.push({ json: { numbers: customersBatch.map((r) => r.number), customers: customersBatch } });\n}\nreturn out;"
       },
       "notesInFlow": true,
-      "notes": "Skips blocked / nameless customers, applies maxCustomers, builds the company properties and batches of 100.",
+      "notes": "Skips blocked / nameless customers, builds the company properties and batches of 100.",
       "id": "d50b6573-9ff6-5dc3-8190-0b611d748f8f"
     },
     {
