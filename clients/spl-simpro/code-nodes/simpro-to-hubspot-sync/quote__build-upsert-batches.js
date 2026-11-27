@@ -41,6 +41,7 @@ const inputs = records.map((quote) => {
       due_date: day(quote.DueDate),
       orderno: quote.OrderNo ?? '',
       validity: quote.ValidityDays ?? '',
+      estimate_net_margin: quote.Totals.NettMargin.Estimate,
       simpro_description: quote.Description ?? '',
       project_tags: (quote.Tags ?? []).map(tag => tag.ID).join(';'),
       tender_number: customField(cfg.deal.cfTenderNumber),
