@@ -39,6 +39,7 @@ const inputs = records.map((job) => {
       approved_date: day(job.DateApproved),
       due_date: day(job.DueDate),
       orderno: job.OrderNo ?? '',
+      estimate_net_margin: job.Totals.NettMargin.Estimate,
       simpro_description: job.Description ?? '',
       project_tags: (job.Tags ?? []).map(tag => tag.ID).join(';'),
       job_type: job.Type ?? '',
